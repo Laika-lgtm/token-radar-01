@@ -3,91 +3,59 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Token Radar — pre-token protocols ranked by implied value</title>
+<title>Token Radar — every pre-token protocol, ranked by what its launch is worth</title>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
 <header class="top">
-  <div class="wrap">
-    <p class="kicker">TOKEN RADAR &middot; DEFI SNAPSHOT <span id="asof"></span></p>
-    <h1>Which pre-token protocol is worth farming next?</h1>
-    <p class="lede">Every protocol DefiLlama tracks that <strong>records no token</strong>, ranked by what its launch
-    would be worth if its record stayed as it is. The value is this radar&rsquo;s own claim, built from the
-    snapshot&rsquo;s figures — never a prediction that a token is coming.</p>
-    <dl class="stats" id="stats"></dl>
+  <div>
+    <h1>TOKEN RADAR</h1>
+    <p class="sub">Every protocol in the sealed snapshot, ranked by the implied value of its launch — and what to do about it before the token exists.</p>
   </div>
+  <div class="asof" id="asof">Snapshot —</div>
 </header>
 
-<main class="wrap">
-  <section class="controls" aria-label="Filter the board">
-    <label>Search <input id="q" type="search" placeholder="Protocol name or slug&hellip;" autocomplete="off"></label>
-    <label>Category <select id="cat"><option value="">All categories</option></select></label>
-    <label>Chain <select id="chain"><option value="">All chains</option></select></label>
-    <label class="check"><input id="watch" type="checkbox"> Watchlist only</label>
-    <button id="reset" type="button">Reset</button>
-    <p class="hint">Click a column header to sort. Click any row for its detail view and farm plan.</p>
-  </section>
+<section class="kpis" id="kpis" aria-label="Key figures"></section>
+<section class="integrity" id="integrity" aria-label="Integrity checks"></section>
 
-  <section id="detail" class="detail" hidden></section>
+<div class="toolbar">
+  <input id="q" type="search" placeholder="Search name or slug…" aria-label="Search">
+  <select id="tier" aria-label="Tier">
+    <option value="all">All tiers</option>
+    <option value="candidate" selected>Launch candidates</option>
+    <option value="not-a-launch">Not a launch</option>
+    <option value="already-trading">Already trading</option>
+  </select>
+  <select id="cat" aria-label="Category"><option value="all">All categories</option></select>
+  <select id="sort" aria-label="Sort by">
+    <option value="rank">Sort: rank</option>
+    <option value="value">Sort: implied value</option>
+    <option value="tvl">Sort: TVL</option>
+    <option value="growth">Sort: 7d growth</option>
+    <option value="odds">Sort: token odds</option>
+  </select>
+  <span class="count" id="count"></span>
+</div>
 
-  <section aria-label="Ranked board">
-    <table id="board">
-      <thead><tr>
-        <th data-sort="r" class="num">#</th>
-        <th data-sort="n">Protocol</th>
-        <th data-sort="c">Category</th>
-        <th data-sort="h">Chains</th>
-        <th data-sort="t" class="num">TVL</th>
-        <th data-sort="g" class="num">7d</th>
-        <th data-sort="a" class="num">Age</th>
-        <th data-sort="v" class="num">Implied value</th>
-        <th data-sort="m" class="num">Mult</th>
-      </tr></thead>
-      <tbody id="rows"></tbody>
-    </table>
-    <p class="count" id="count"></p>
-  </section>
+<section id="detail" class="detail" hidden></section>
 
-  <section class="method" aria-label="How the value is built">
-    <h2>How the value is built</h2>
-    <p><code>implied = TVL &times; category multiple &times; growth &times; maturity &times; chains</code></p>
-    <ul>
-      <li><strong>Category multiple</strong> — the median market-cap / TVL of the trading protocols in the same
-      category, computed from this snapshot. A category with fewer than 3 trading comparables uses the
-      snapshot-wide median. Clamped to 0.05&ndash;1.50.</li>
-      <li><strong>Growth</strong> — <code>1 + clamp(7-day TVL change, &minus;60%, +120%) &times; 0.5</code>.</li>
-      <li><strong>Maturity</strong> — <code>0.70 + min(age in days, 1095) / 1095 &times; 0.30</code>. Age is the days
-      from the protocol&rsquo;s listing date to the snapshot date; 365 days when the snapshot records no date.</li>
-      <li><strong>Chains</strong> — <code>1 + min(chains &minus; 1, 4) &times; 0.03</code>.</li>
-    </ul>
-    <p>Scope: the board carries all 40 protocols on the snapshot&rsquo;s watchlist, plus the rankable pre-token
-    protocols below the $50M floor. Above the floor it carries the watchlist only — the snapshot holds no
-    parent-protocol records, so a protocol the house left out above the floor may be a product of another
-    protocol, and this radar does not rank what it cannot tell apart from a product. Wrapped, staked and
-    bridged products, exchanges, versioned pools and exchange-branded products are never ranked.</p>
-    <table id="comps">
-      <thead><tr><th>Category</th><th class="num">Multiple</th><th class="num">Trading comps</th><th>Note</th></tr></thead>
-      <tbody id="compRows"></tbody>
-    </table>
-  </section>
+<table class="board">
+  <thead><tr>
+    <th>#</th><th>Protocol</th><th>Category</th><th class="num">TVL</th><th class="num">7d</th><th class="num">Age</th>
+    <th class="num">Token odds</th><th class="num">Fitted value</th><th class="num">Implied value</th><th>Tier</th>
+  </tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<p class="note" id="shownote"></p>
 
-  <section class="live" aria-label="Protocols whose token already trades">
-    <h2>Already trading — the market&rsquo;s own values, not ranked</h2>
-    <p>These protocols record a token, so they are not on the board. Their market-cap / TVL is the raw material
-    the category multiples above are built from.</p>
-    <table id="liveTable">
-      <thead><tr><th>Protocol</th><th>Category</th><th class="num">TVL</th><th class="num">Market cap</th><th class="num">Mcap / TVL</th></tr></thead>
-      <tbody id="liveRows"></tbody>
-    </table>
-  </section>
+<section class="method" id="method">
+  <h2>How this radar works — read it before you trust a number</h2>
+  <div id="method-body"></div>
+</section>
 
-  <footer>
-    <p>Source: DefiLlama public API (api.llama.fi/protocols), snapshot as of <span id="asof2"></span>.
-    &ldquo;Records no token&rdquo; means the snapshot carries no token for the protocol — it does not prove the
-    protocol has none. Implied values are this radar&rsquo;s own estimates, not investment advice; farming a
-    protocol never guarantees a token, an airdrop or a reward.</p>
-  </footer>
-</main>
+<footer>
+  <p>Data: the sealed snapshot (DefiLlama protocols at or above $5,000,000 TVL). A protocol is called “pre-token” when the snapshot records no token for it — never that it has none: a protocol on the list may still have a token its record does not carry. Implied values are this entry's own claim, never make.fun's. No network is used by this page.</p>
+</footer>
 <script src="../data.js"></script>
 <script src="app.js"></script>
 </body>

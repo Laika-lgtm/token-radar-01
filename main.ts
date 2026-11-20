@@ -1,16 +1,12 @@
-// Token Radar (Node 22, standard library only).
+// Token Radar v2 — program entrypoint (Node 22, standard library only).
 //
 // Reads the sealed snapshot from /input/snapshot.json (or --input <file|dir>),
-// scores every pre-token protocol with the model in lib/model.ts, writes the
-// ranked board to /output/board.json, writes the dashboard's data beside the
-// page as data.js, copies dashboard/ and screenshots/ to /output, and writes
-// /output/dossier.json with the vendored make.fun library.
-//
-// The run is deterministic: the same snapshot bytes in give the same bytes
-// out, every time, with no network and no clock read anywhere in the model.
+// builds the 758-row board with the fitted model in lib/model.ts, writes
+// /output/board.json and /output/data.js, copies dashboard/ and screenshots/
+// to /output, and writes /output/dossier.json with the vendored library.
 //
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
-//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts --input ../input/snapshot.json
+//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts --input <kit>/input/snapshot.json
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -20,7 +16,6 @@ import { buildDossier } from './vendor/makefun-board.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 
-/** The scorer's own caps: the text cap shapes the dossier, the rest refuse. */
 const TEXT_MAX_BYTES = 65_536;
 const SCREENSHOT_CAPS = { max: 4, max_bytes: 524_288 };
 const IMAGE_NAME = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$/;
@@ -68,7 +63,7 @@ function copyFiles(from: string, to: string): string[] {
   return copied;
 }
 
-const dash = copyFiles(join(here, 'dashboard'), join(out, 'dashboard'));
+const dashFiles = copyFiles(join(here, 'dashboard'), join(out, 'dashboard'));
 const shots = copyFiles(join(here, 'screenshots'), join(out, 'screenshots'));
 if (shots.length < 3) {
   process.stderr.write(`token radar: screenshots/ holds ${shots.length} image${shots.length === 1 ? '' : 's'}: hand in 3, the board, a detail view and a filtered view\n`);
@@ -82,9 +77,14 @@ for (const name of shots) {
 }
 
 // The dossier is written last: the scorer rebuilds it from this /output and compares bytes.
-writeFileSync(join(out, 'dossier.json'), buildDossier(out, { text_max_bytes: TEXT_MAX_BYTES, screenshots: SCREENSHOT_CAPS, dashboard: { max_files: 400, max_bytes: 4_194_304 } }));
+writeFileSync(
+  join(out, 'dossier.json'),
+  buildDossier(out, { text_max_bytes: TEXT_MAX_BYTES, screenshots: SCREENSHOT_CAPS, dashboard: { max_files: 400, max_bytes: 4_194_304 } }),
+);
 
 process.stdout.write(
-  `token radar: ${snapshot.protocols.length} protocols, ${snapshot.watchlist.length} on the watchlist, ${board.length} rows scored (${radar.early_size} early, ${radar.live_size} live set aside)\n` +
-    `token radar: wrote ${join(out, 'board.json')}, ${join(out, 'data.js')}, ${join(out, 'dashboard')} (${dash.length} files), ${join(out, 'screenshots')} (${shots.length} images) and ${join(out, 'dossier.json')}\n`,
+  `token radar: ${snapshot.protocols.length} protocols, ${snapshot.watchlist.length} on the watchlist, ${board.length} rows scored (${radar.meta.candidates} launch candidates, ${radar.meta.not_a_launch} not-a-launch, ${radar.meta.live} already trading)\n` +
+    `token radar: top implied value $${radar.meta.top_implied_value_usd.toLocaleString('en-US')}, median $${radar.meta.median_implied_value_usd.toLocaleString('en-US')}\n` +
+    `token radar: held out twice — median error x${radar.meta.held_out[0].median_error_factor.toFixed(2)} (R2 ${radar.meta.held_out[0].r2.toFixed(2)}) and x${radar.meta.held_out[1].median_error_factor.toFixed(2)} (R2 ${radar.meta.held_out[1].r2.toFixed(2)})\n` +
+    `token radar: wrote ${join(out, 'board.json')}, ${join(out, 'data.js')}, ${join(out, 'dashboard')} (${dashFiles.length} files), ${join(out, 'screenshots')} (${shots.length} images) and ${join(out, 'dossier.json')}\n`,
 );
