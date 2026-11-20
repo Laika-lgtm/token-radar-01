@@ -3,58 +3,71 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Token Radar — every pre-token protocol, ranked by what its launch is worth</title>
+<meta name="description" content="Launch Radar v5 — 758 protocols ranked by implied launch value, with farm verdicts netted to the dollar.">
+<title>Launch Radar v5 — 758 protocols ranked by implied launch value</title>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
 <header class="top">
   <div>
-    <h1>TOKEN RADAR</h1>
-    <p class="sub">Every protocol in the sealed snapshot, ranked by the implied value of its launch — and what to do about it before the token exists.</p>
+    <h1>Launch Radar <span class="v">v5</span></h1>
+    <p class="sub">Every protocol in the snapshot, ranked by what its token launch would be worth — and whether farming it pays, netted to the dollar.</p>
+    <p class="src" id="srcLine"></p>
   </div>
-  <div class="asof" id="asof">Snapshot —</div>
+  <div class="topRight">
+    <div class="big" id="topVerdict"></div>
+    <div class="small">farm verdicts at the low end of the band</div>
+  </div>
 </header>
 
-<section class="kpis" id="kpis" aria-label="Key figures"></section>
-<section class="integrity" id="integrity" aria-label="Integrity checks"></section>
+<section class="kpis" id="kpis" aria-label="Coverage"></section>
+<p class="integrity" id="integrity"></p>
 
-<div class="toolbar">
-  <input id="q" type="search" placeholder="Search name or slug…" aria-label="Search">
-  <select id="tier" aria-label="Tier">
-    <option value="all">All tiers</option>
-    <option value="candidate" selected>Launch candidates</option>
-    <option value="not-a-launch">Not a launch</option>
-    <option value="already-trading">Already trading</option>
+<section class="controls">
+  <input id="q" type="search" placeholder="Search a protocol…" aria-label="Search">
+  <select id="fStatus" aria-label="Status filter">
+    <option value="">All statuses</option>
+    <option value="PRE-TOKEN">Pre-token only</option>
+    <option value="TRADING">Trading only</option>
   </select>
-  <select id="cat" aria-label="Category"><option value="all">All categories</option></select>
-  <select id="sort" aria-label="Sort by">
-    <option value="rank">Sort: rank</option>
-    <option value="value">Sort: implied value</option>
+  <select id="fVerdict" aria-label="Verdict filter">
+    <option value="">All verdicts</option>
+    <option value="FARM">FARM</option>
+    <option value="THIN">THIN</option>
+    <option value="SKIP">SKIP</option>
+  </select>
+  <select id="fCat" aria-label="Category filter"><option value="">All categories</option></select>
+  <select id="fSort" aria-label="Sort">
+    <option value="implied">Sort: implied value</option>
     <option value="tvl">Sort: TVL</option>
-    <option value="growth">Sort: 7d growth</option>
-    <option value="odds">Sort: token odds</option>
+    <option value="net">Sort: net $</option>
+    <option value="expected">Sort: expected $</option>
   </select>
-  <span class="count" id="count"></span>
-</div>
-
-<section id="detail" class="detail" hidden></section>
-
-<table class="board">
-  <thead><tr>
-    <th>#</th><th>Protocol</th><th>Category</th><th class="num">TVL</th><th class="num">7d</th><th class="num">Age</th>
-    <th class="num">Token odds</th><th class="num">Fitted value</th><th class="num">Implied value</th><th>Tier</th>
-  </tr></thead>
-  <tbody id="rows"></tbody>
-</table>
-<p class="note" id="shownote"></p>
-
-<section class="method" id="method">
-  <h2>How this radar works — read it before you trust a number</h2>
-  <div id="method-body"></div>
+  <span class="count" id="rowCount"></span>
 </section>
 
+<main id="main">
+  <section id="detailWrap"></section>
+  <section class="boardWrap">
+    <table class="board" id="board">
+      <thead><tr>
+        <th data-k="rank">#</th><th data-k="name">Protocol</th><th data-k="category">Category</th>
+        <th data-k="tvl" class="num">TVL</th><th data-k="g7" class="num">7d</th>
+        <th data-k="implied" class="num">Implied value</th><th data-k="net" class="num">Net $</th>
+        <th data-k="verdict">Verdict</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+
+  <section class="method" id="method">
+    <h2>How the numbers are made</h2>
+    <div id="methodBody"></div>
+  </section>
+</main>
+
 <footer>
-  <p>Data: the sealed snapshot (DefiLlama protocols at or above $5,000,000 TVL). A protocol is called “pre-token” when the snapshot records no token for it — never that it has none: a protocol on the list may still have a token its record does not carry. Implied values are this entry's own claim, never make.fun's. No network is used by this page.</p>
+  <p>Implied values are this radar's own claim from the snapshot's figures, never the snapshot's. A protocol is said to record no token, never to have none. Nothing here predicts whether or when a token is issued.</p>
 </footer>
 <script src="../data.js"></script>
 <script src="app.js"></script>
