@@ -3,71 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Launch Radar v6 — 758 protocols ranked by implied launch value, with farm verdicts by break-even airdrop share.">
-<title>Launch Radar v6 — 758 protocols ranked by implied launch value</title>
+<title>Token Radar v7 — pre-token protocols priced off their trading peers</title>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
+<a class="skip" href="#board">Skip to the board</a>
 <header class="top">
-  <div>
-    <h1>Launch Radar <span class="v">v6</span></h1>
-    <p class="sub">Every protocol in the snapshot, ranked by what its token launch would be worth — and whether farming it pays, judged by the break-even airdrop share.</p>
-    <p class="src" id="srcLine"></p>
-  </div>
-  <div class="topRight">
-    <div class="big" id="topVerdict"></div>
-    <div class="small">farm verdicts by break-even airdrop share</div>
+  <div class="wrap">
+    <h1>Token Radar <span class="v7">v7</span></h1>
+    <p class="sub">Which pre-token protocol is worth farming next — priced off the tokens that already trade, not off a TVL table.</p>
+    <div id="kpis" class="kpis" aria-live="polite"></div>
+    <p id="integrity" class="integrity"></p>
   </div>
 </header>
-
-<section class="kpis" id="kpis" aria-label="Coverage"></section>
-<p class="integrity" id="integrity"></p>
-
-<section class="controls">
-  <input id="q" type="search" placeholder="Search a protocol…" aria-label="Search">
-  <select id="fStatus" aria-label="Status filter">
-    <option value="">All statuses</option>
-    <option value="PRE-TOKEN">Pre-token only</option>
-    <option value="TRADING">Trading only</option>
-  </select>
-  <select id="fVerdict" aria-label="Verdict filter">
-    <option value="">All verdicts</option>
-    <option value="FARM">FARM</option>
-    <option value="THIN">THIN</option>
-    <option value="SKIP">SKIP</option>
-  </select>
-  <select id="fCat" aria-label="Category filter"><option value="">All categories</option></select>
-  <select id="fSort" aria-label="Sort">
-    <option value="implied">Sort: implied value</option>
-    <option value="tvl">Sort: TVL</option>
-    <option value="breakeven">Sort: break-even %</option>
-  </select>
-  <span class="count" id="rowCount"></span>
-</section>
-
-<main id="main">
-  <section id="detailWrap"></section>
-  <section class="boardWrap">
-    <table class="board" id="board">
-      <thead><tr>
-        <th data-k="rank">#</th><th data-k="name">Protocol</th><th data-k="category">Category</th>
-        <th data-k="tvl" class="num">TVL</th><th data-k="g7" class="num">7d</th>
-        <th data-k="implied" class="num">Implied value</th><th data-k="breakeven" class="num">Break-even</th>
-        <th data-k="verdict">Verdict</th>
-      </tr></thead>
-      <tbody id="rows"></tbody>
-    </table>
-  </section>
-
-  <section class="method" id="method">
-    <h2>How the numbers are made</h2>
-    <div id="methodBody"></div>
-  </section>
+<main class="wrap" id="board" tabindex="-1">
+  <section id="controls" class="controls" aria-label="Board controls"></section>
+  <section id="view" aria-live="polite"></section>
+  <section id="portfolio" class="panel" aria-label="Farm portfolio planner"></section>
+  <section id="method" class="panel" aria-label="Methodology"></section>
+  <footer class="foot"><p id="footline"></p></footer>
 </main>
-
-<footer>
-  <p>Implied values are this radar's own claim from the snapshot's figures, never the snapshot's. A protocol is said to record no token, never to have none. Nothing here predicts whether or when a token is issued.</p>
-</footer>
 <script src="../data.js"></script>
 <script src="app.js"></script>
 </body>
