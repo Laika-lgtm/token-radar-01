@@ -3,20 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Launch Radar v5 — 758 protocols ranked by implied launch value, with farm verdicts netted to the dollar.">
-<title>Launch Radar v5 — 758 protocols ranked by implied launch value</title>
+<meta name="description" content="Launch Radar v6 — 758 protocols ranked by implied launch value, with farm verdicts by break-even airdrop share.">
+<title>Launch Radar v6 — 758 protocols ranked by implied launch value</title>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
 <header class="top">
   <div>
-    <h1>Launch Radar <span class="v">v5</span></h1>
-    <p class="sub">Every protocol in the snapshot, ranked by what its token launch would be worth — and whether farming it pays, netted to the dollar.</p>
+    <h1>Launch Radar <span class="v">v6</span></h1>
+    <p class="sub">Every protocol in the snapshot, ranked by what its token launch would be worth — and whether farming it pays, judged by the break-even airdrop share.</p>
     <p class="src" id="srcLine"></p>
   </div>
   <div class="topRight">
     <div class="big" id="topVerdict"></div>
-    <div class="small">farm verdicts at the low end of the band</div>
+    <div class="small">farm verdicts by break-even airdrop share</div>
   </div>
 </header>
 
@@ -40,8 +40,7 @@
   <select id="fSort" aria-label="Sort">
     <option value="implied">Sort: implied value</option>
     <option value="tvl">Sort: TVL</option>
-    <option value="net">Sort: net $</option>
-    <option value="expected">Sort: expected $</option>
+    <option value="breakeven">Sort: break-even %</option>
   </select>
   <span class="count" id="rowCount"></span>
 </section>
@@ -53,7 +52,7 @@
       <thead><tr>
         <th data-k="rank">#</th><th data-k="name">Protocol</th><th data-k="category">Category</th>
         <th data-k="tvl" class="num">TVL</th><th data-k="g7" class="num">7d</th>
-        <th data-k="implied" class="num">Implied value</th><th data-k="net" class="num">Net $</th>
+        <th data-k="implied" class="num">Implied value</th><th data-k="breakeven" class="num">Break-even</th>
         <th data-k="verdict">Verdict</th>
       </tr></thead>
       <tbody id="rows"></tbody>

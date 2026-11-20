@@ -1,4 +1,4 @@
-// Launch Radar v5 — the page. Reads window.LAUNCH_RADAR (written by
+// Launch Radar v6 — the page. Reads window.LAUNCH_RADAR (written by
 // main.ts from the sealed snapshot) and renders the board, the detail view
 // and the methodology. No network: every number on this page comes from
 // that one object, so the screenshots and the code always agree.
@@ -23,6 +23,16 @@
   function pct(n) {
     if (n === null || n === undefined) return '—';
     return (n > 0 ? '+' : '') + n.toFixed(1) + '%';
+  }
+  // Break-even share, in percent: tiny values need more decimals, huge
+  // ones are capped so the board stays readable.
+  function bePct(n) {
+    if (n === null || n === undefined) return '—';
+    if (n > 999) return '>999%';
+    if (n < 0.01) return n.toFixed(4) + '%';
+    if (n < 1) return n.toFixed(3) + '%';
+    if (n < 100) return n.toFixed(2) + '%';
+    return Math.round(n) + '%';
   }
   function esc(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -81,8 +91,7 @@
       return true;
     });
     if (state.sort === 'tvl') out = out.slice().sort(function (a, b) { return b.tvl_usd - a.tvl_usd; });
-    if (state.sort === 'net') out = out.slice().sort(function (a, b) { return b.net_usd - a.net_usd; });
-    if (state.sort === 'expected') out = out.slice().sort(function (a, b) { return b.expected_usd - a.expected_usd; });
+    if (state.sort === 'breakeven') out = out.slice().sort(function (a, b) { return a.breakeven_pct - b.breakeven_pct; });
     return out;
   }
 
@@ -100,7 +109,7 @@
         '<td class="num">' + money(r.tvl_usd) + '</td>' +
         '<td class="num ' + gCls + '">' + pct(g) + '</td>' +
         '<td class="num"><b>' + money(r.implied_value_usd) + '</b></td>' +
-        '<td class="num">' + money(r.net_usd) + '</td>' +
+        '<td class="num">' + bePct(r.breakeven_pct) + '</td>' +
         '<td>' + verdictBadge(r.verdict) + '</td></tr>';
     }).join('');
     document.querySelectorAll('#rows tr').forEach(function (tr) {
@@ -134,18 +143,19 @@
       '</div>' +
       '<div class="formula">implied ' + money(r.implied_value_usd) + ' = fitted ' + money(r.fitted_usd) +
       ' × odds ' + r.odds.toFixed(3) + ' × eligibility ' + r.eligibility + '</div>' +
-      '<h3>Farm verdict — netted to the dollar at the low end of the band</h3>' +
+      '<h3>Farm verdict — break-even airdrop share at the low end of the band</h3>' +
       '<div class="arith">' +
       '<div class="cell"><b>' + money(r.low_usd) + '</b><span>low end = half the implied value</span></div>' +
-      '<div class="cell"><b>' + money(r.expected_usd) + '</b><span>expected farmer value = low × 5% ÷ 2,000 farmers</span></div>' +
-      '<div class="cell"><b>−' + money(r.gas_usd) + '</b><span>gas, 12 transactions on ' + esc(r.chains[0] || 'its chain') + '</span></div>' +
-      '<div class="cell"><b>−' + money(r.capital_usd) + '</b><span>cost of ' + money(r.deposit_usd) + ' locked 180 days at 8% a year</span></div>' +
-      '<div class="cell"><b>' + money(r.net_usd) + '</b><span>net farmer value → ' + r.verdict + '</span></div>' +
+      '<div class="cell"><b>' + money(r.gas_usd) + '</b><span>gas, 12 transactions on ' + esc(r.chains[0] || 'its chain') + '</span></div>' +
+      '<div class="cell"><b>' + money(r.capital_usd) + '</b><span>cost of ' + money(r.deposit_usd) + ' locked 180 days at 8% a year</span></div>' +
+      '<div class="cell"><b>' + money(r.gas_usd + r.capital_usd) + '</b><span>farming cost to cover</span></div>' +
+      '<div class="cell"><b>' + bePct(r.breakeven_pct) + '</b><span>break-even airdrop share → ' + r.verdict + '</span></div>' +
       '</div>' +
-      '<div class="formula">net ' + money(r.net_usd) + ' = expected ' + money(r.expected_usd) +
-      ' − gas ' + money(r.gas_usd) + ' − capital ' + money(r.capital_usd) +
-      ' → ' + r.verdict + ' (FARM if net ≥ $25, THIN if net &gt; $0, else SKIP)</div>' +
-      '<p class="meta">Assumption, stated plainly: 5% of the low-end implied value is airdropped and split equally among 2,000 farmers. ' +
+      '<div class="formula">break-even ' + bePct(r.breakeven_pct) + ' = (' + money(r.gas_usd) + ' gas + ' +
+      money(r.capital_usd) + ' capital) ÷ ' + money(r.low_usd) + ' low end' +
+      ' → ' + r.verdict + ' (FARM if break-even ≤ 0.01%, THIN if ≤ 0.1%, else SKIP)</div>' +
+      '<p class="meta">Nothing is assumed about the airdrop: the break-even share is what an airdrop would have to be ' +
+      'for this farm to pay, computed from the farming cost alone. ' +
       'The deposit is sized to the opportunity: ' + money(r.deposit_usd) + ' here, from $100 to $5,000 across the board.</p>' +
       '<h3>Nearest traded comps — same category, nearest TVL (mcap ÷ TVL)</h3>' +
       '<table class="comps"><tr><th>Protocol</th><th class="num">Multiple</th></tr>' + compRows + '</table>' +
@@ -185,10 +195,12 @@
     'Ranks are stable too: ' + V.bootstrap_refits + ' bootstrap refits (seed ' + V.bootstrap_seed +
     ') give every protocol a rank range, shown in its detail view.</p>' +
     '<h3>The farm verdict</h3>' +
-    '<p>Expected farmer value = low-end implied value × 5% ÷ 2,000 farmers. Net = expected − gas (12 transactions ' +
-    'on the protocol’s main chain) − cost of the deposit locked 180 days at 8% a year. FARM if net ≥ $25, THIN if ' +
-    'net &gt; $0, SKIP otherwise. The deposit is sized to the opportunity — $100 to $5,000, larger where the low end ' +
-    'is larger — never one template for every row. Every assumption in this paragraph is a stated number, not a hidden one.</p>';
+    '<p>Farming costs gas (12 transactions on the protocol’s main chain) plus the cost of the deposit locked ' +
+    '180 days at 8% a year. The break-even airdrop share is that cost divided by the low-end implied value — ' +
+    'the share of the low end an airdrop would have to be for the farm to pay. It is computed, not assumed: ' +
+    'no airdrop size and no farmer count is invented anywhere on this page. FARM if break-even ≤ 0.01%, THIN if ' +
+    '≤ 0.1%, SKIP otherwise — those two lines are judgement rules, stated as such. The deposit is sized to the ' +
+    'opportunity — $100 to $5,000, larger where the low end is larger — never one template for every row.</p>';
 
   // ---- wiring ----
   document.getElementById('q').addEventListener('input', function (e) { state.q = e.target.value; renderRows(); });
@@ -199,7 +211,7 @@
   document.querySelectorAll('#board th').forEach(function (th) {
     th.addEventListener('click', function () {
       var k = th.getAttribute('data-k');
-      state.sort = k === 'tvl' ? 'tvl' : k === 'net' ? 'net' : 'implied';
+      state.sort = k === 'tvl' ? 'tvl' : k === 'breakeven' ? 'breakeven' : 'implied';
       document.getElementById('fSort').value = state.sort;
       renderRows();
     });

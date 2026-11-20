@@ -1,4 +1,4 @@
-// Launch Radar v5 — entrypoint.
+// Launch Radar v6 — entrypoint.
 //
 // Reads the sealed snapshot, builds the ranked board with lib/model.ts,
 // writes board.json and the dashboard's data, copies dashboard/ and

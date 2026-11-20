@@ -1,4 +1,4 @@
-// Launch Radar v5 — value model, validation and farm verdicts.
+// Launch Radar v6 — value model, validation and farm verdicts.
 //
 // Everything here is computed from the sealed snapshot at run time: no
 // protocol name is hardcoded anywhere. The fit set is the protocols whose
@@ -47,11 +47,10 @@ export interface BoardRow {
   odds: number;
   eligibility: number;
   low_usd: number;
-  expected_usd: number;
   gas_usd: number;
   deposit_usd: number;
   capital_usd: number;
-  net_usd: number;
+  breakeven_pct: number;
   verdict: string;
   rank_lo: number;
   rank_hi: number;
@@ -89,10 +88,14 @@ export interface BoardBuild {
   meta: { as_of: string; source: string; floor_usd: number };
 }
 
-// ---- stated assumptions (shown verbatim in the methodology) ----
-export const AIRDROP_SHARE = 0.05; // 5% of the low-end implied value is airdropped
-export const FARMER_COUNT = 2000; // ... split equally among 2,000 farmers
+// ---- farm verdicts: a break-even airdrop share, derived not assumed ----
+// No airdrop size or farmer count is assumed anywhere: the break-even
+// share is the farming cost divided by the low-end implied value — the
+// share of the low end an airdrop would have to be for the farm to pay.
+// The 0.01% / 0.1% lines below are stated judgement rules, not facts.
 export const LOW_FACTOR = 0.5; // low end of the value band = half the central value
+export const FARM_BE_MAX = 0.0001; // FARM if the break-even share is at most 0.01%
+export const THIN_BE_MAX = 0.001; // THIN if at most 0.1%, else SKIP
 export const HORIZON_DAYS = 180; // farming horizon the plans are costed over
 export const CAPITAL_RATE = 0.08; // 8% a year for the cost of locked capital
 export const TX_COUNT = 12; // transactions in a 180-day plan
@@ -261,7 +264,7 @@ function planSteps(row: BoardRow): string[] {
     core,
     `Repeat the core action weekly for ${HORIZON_DAYS} days, about ${TX_COUNT} transactions in all, roughly ${gas} of gas on ${chain} at current prices.`,
     `Keep ${dep} working in the position for the whole window; at 8% a year the locked capital costs about ${money(row.capital_usd)} over ${HORIZON_DAYS} days.`,
-    `Track the position in a note with dates and amounts, and stop early if fees pass ${money(row.expected_usd)} — the expected farmer value at the low end of the band.`,
+    `Track the position in a note with dates and amounts, and stop early if fees pass ${money(row.gas_usd + row.capital_usd)} — the cost the airdrop must cover before this farm pays.`,
   ];
 }
 
@@ -433,12 +436,14 @@ export function buildBoard(snap: Snapshot): BoardBuild {
   const rows: BoardRow[] = scored.map((s, i) => {
     const p = s.p;
     const low = s.implied * LOW_FACTOR;
-    const expected = (low * AIRDROP_SHARE) / FARMER_COUNT;
     const gas = TX_COUNT * gasPerTx(p.chains[0] ?? '');
     const deposit = clamp(Math.round(low * 0.0002), 100, 5000);
     const capital = deposit * CAPITAL_RATE * (HORIZON_DAYS / 365);
-    const net = expected - gas - capital;
-    const verdict = net >= 25 ? 'FARM' : net > 0 ? 'THIN' : 'SKIP';
+    // Break-even airdrop share: the fraction of the low-end implied value
+    // an airdrop would have to be for the farm to cover its own cost.
+    const breakeven = (gas + capital) / Math.max(low, 1);
+    const breakevenPct = Math.round(breakeven * 1000000) / 10000;
+    const verdict = breakeven <= FARM_BE_MAX ? 'FARM' : breakeven <= THIN_BE_MAX ? 'THIN' : 'SKIP';
     if (verdict === 'FARM') farm++;
     else if (verdict === 'THIN') thin++;
     else skip++;
@@ -458,11 +463,10 @@ export function buildBoard(snap: Snapshot): BoardBuild {
       odds: Math.round(s.odds * 1000) / 1000,
       eligibility: s.elig,
       low_usd: Math.max(1, Math.round(low)),
-      expected_usd: Math.round(expected * 100) / 100,
       gas_usd: Math.round(gas * 100) / 100,
       deposit_usd: deposit,
       capital_usd: Math.round(capital * 100) / 100,
-      net_usd: Math.round(net * 100) / 100,
+      breakeven_pct: breakevenPct,
       verdict,
       rank_lo: rankLo.get(p.slug)!,
       rank_hi: rankHi.get(p.slug)!,

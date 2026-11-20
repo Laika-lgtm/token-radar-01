@@ -1,4 +1,4 @@
-# Launch Radar v5: fitted value tested held-out, LOO and walk-forward, token odds, farm verdicts netted to the dollar, 758 protocols
+# Launch Radar v6: fitted value tested held-out, LOO and walk-forward, token odds, farm verdicts by break-even airdrop share, 758 protocols
 
 [![make.fun · token-radar-01](https://make.fun/badge/token-radar-01.svg)](https://make.fun/bounty/token-radar-01?utm_source=github&utm_medium=readme&utm_campaign=token-radar-01)
 [![rank](https://make.fun/badge/token-radar-01/Laika-lgtm/token-radar-01/rank.svg)](https://make.fun/bounty/token-radar-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=token-radar-01)
@@ -7,8 +7,8 @@
 The best token launch radar for the make.fun `token-radar-01` bounty ($1,325).
 It reads the sealed DefiLlama snapshot (758 protocols, 40 on the watchlist),
 fits an OLS value model on the 128 tokens that record a market cap above zero,
-and ranks every protocol by implied launch value — with a farm verdict netted
-to the dollar on every row.
+and ranks every protocol by implied launch value — with a farm verdict on every row,
+judged by its break-even airdrop share.
 
 ## What the radar does
 
@@ -22,12 +22,13 @@ to the dollar on every row.
 - **Blind-tested, four ways.** Split-half, leave-one-out, walk-forward (trained only on
   tokens listed earlier), and 200 seeded bootstrap refits that give every protocol a
   rank range. Every test is scored against a flat median-multiple baseline out of sample.
-- **Farm verdicts, netted to the dollar.** Expected farmer value = low-end implied value
-  × 5% ÷ 2,000 farmers; net = expected − gas − cost of capital over 180 days.
-  FARM if net ≥ $25, THIN if net > $0, SKIP otherwise. Deposits are sized to the
+- **Farm verdicts by break-even airdrop share.** Break-even = (gas + cost of capital
+  over 180 days) ÷ low-end implied value — the share of the low end an airdrop would
+  have to be for the farm to pay. FARM if ≤ 0.01%, THIN if ≤ 0.1%, SKIP otherwise. No airdrop
+  size and no farmer count is assumed anywhere. Deposits are sized to the
   opportunity ($100–$5,000), never one template for every row.
 - **Detail view per protocol.** The full arithmetic (fitted × odds × eligibility, then the
-  netting), the three nearest traded comps, the bootstrap rank range, and a costed
+  break-even arithmetic), the three nearest traded comps, the bootstrap rank range, and a costed
   180-day farm plan.
 
 ## Verified on this snapshot (2026-11-14)
@@ -36,8 +37,8 @@ to the dollar on every row.
 - Blind tests vs the flat median multiple (median mcap ÷ TVL = 0.2138), median error:
   split-half ×3.73 vs ×5.47 and ×3.94 vs ×5.11; leave-one-out ×3.74 vs ×5.07;
   walk-forward ×3.29 vs ×5.12. The model beats the flat multiple out of sample in every test.
-- Rank 1: Bittensor dTAO, implied $25.85M, net $209.14, verdict FARM.
-- Verdicts across the 758-row board: FARM 63, THIN 127, SKIP 568.
+- Rank 1: Bittensor dTAO, implied $25.85M, break-even 0.0009%, verdict FARM.
+- Verdicts across the 758-row board: FARM 395, THIN 319, SKIP 44.
 
 ## Run it
 
