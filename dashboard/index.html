@@ -1,28 +1,31 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Token Radar v8 — pre-token protocols priced off their trading peers</title>
+<title>Token Radar — which pre-token protocol is worth farming next</title>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
 <a class="skip" href="#board">Skip to the board</a>
-<header class="top">
-  <div class="wrap">
-    <h1>Token Radar <span class="v8">v8</span></h1>
-    <p class="sub">Which pre-token protocol is worth farming next — priced off the tokens that already trade, not off a TVL table.</p>
-    <div id="kpis" class="kpis" aria-live="polite"></div>
-    <p id="integrity" class="integrity"></p>
+<header class="masthead">
+  <div class="page">
+    <h1>Token Radar <span class="edition">v8</span></h1>
+    <p class="tagline">Which pre-token protocol is worth farming next — priced off the tokens that already trade, not off a TVL table.</p>
+    <div id="stats" class="stats" aria-label="Board summary"></div>
+    <p id="snapshot-line" class="snapshot-line"></p>
   </div>
 </header>
-<main class="wrap" id="board" tabindex="-1">
-  <section id="controls" class="controls" aria-label="Board controls"></section>
+<main class="page" id="board">
+  <noscript><p class="empty">This dashboard is built by JavaScript from the snapshot data — enable JavaScript to see the board.</p></noscript>
+  <section id="controls" class="toolbar" aria-label="Board controls"></section>
   <section id="view" aria-live="polite"></section>
-  <section id="portfolio" class="panel" aria-label="Farm portfolio planner"></section>
-  <section id="method" class="panel" aria-label="Methodology"></section>
-  <footer class="foot"><p id="footline"></p></footer>
+  <section id="planner" class="card" aria-label="Farm portfolio planner"></section>
+  <section id="method" class="card" aria-label="Methodology"></section>
 </main>
+<footer class="page foot">
+  <p>Implied value is this entry’s own claim from the snapshot’s figures, never make.fun’s. A protocol “records no token” when DefiLlama records none for it — that is not proof it has none. Farm costs use assumed typical gas fees (see Methodology); verdict thresholds are judgement rules.</p>
+</footer>
 <script src="../data.js"></script>
 <script src="app.js"></script>
 </body>

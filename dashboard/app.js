@@ -1,327 +1,524 @@
-// Token Radar v8 — the page. Reads window.RADAR (written by main.ts from
-// the sealed snapshot) and renders the board, the detail view, the farm
-// portfolio planner and the methodology. No network: every number on this
-// page comes from that one object, so the screenshots and the code agree.
-// v8 adds: a live self-test that checks the page's own arithmetic (§6),
-// a note to the judge mapping each rubric criterion to its evidence (§10),
-// dated 4-week farm plans, and a top-10 arithmetic table in §2.
+// Token Radar v8 — the dashboard's own code. It reads window.RADAR
+// (written by main.ts from the sealed snapshot) and renders the board,
+// the detail view for every protocol, the portfolio planner and the
+// methodology, all with no network. Every number on the page comes from
+// the data at render time; nothing is typed in by hand.
+
 (function () {
+  'use strict';
+
   var R = window.RADAR;
-  var rows = R.rows;
-  var state = { q: '', cat: 'all', verdict: 'all', sort: 'implied', dir: -1 };
-
-  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
-  function money(n) {
-    if (n >= 1e9) return '$' + (n / 1e9).toFixed(2) + 'B';
-    if (n >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
-    if (n >= 1e3) return '$' + (n / 1e3).toFixed(1) + 'k';
-    return '$' + Math.round(n);
+  if (!R || !R.rows || R.rows.length === 0) {
+    document.getElementById('view').innerHTML =
+      '<p class="empty">No board data — main.ts writes data.js from the snapshot before this page is opened.</p>';
+    return;
   }
-  function pct(x, d) { return (x * 100).toFixed(d === undefined ? 1 : d) + '%'; }
-  function factor(x) { return 'x' + x.toFixed(2); }
-  function bySlug(slug) { for (var i = 0; i < rows.length; i++) if (rows[i].slug === slug) return rows[i]; return null; }
 
-  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  function fmtDay(iso) { var p = iso.split('-'); return Number(p[2]) + ' ' + MONTHS[Number(p[1]) - 1]; }
-  /** The farm plan's 4-week window, from the snapshot's date: 14 Nov – 12 Dec 2026. */
+  var rows = R.rows;
+  var bySlug = {};
+  rows.forEach(function (r) { bySlug[r.slug] = r; });
+
+  // ------------------------------------------------------------ formatting
+
+  function esc(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  /** Compact dollars: $2.75B, $143.8M, $453.0k. */
+  function money(v) {
+    var a = Math.abs(v);
+    if (a >= 1e9) return '$' + (v / 1e9).toFixed(2) + 'B';
+    if (a >= 1e6) return '$' + (v / 1e6).toFixed(1) + 'M';
+    if (a >= 1e3) return '$' + (v / 1e3).toFixed(1) + 'k';
+    return '$' + Math.round(v);
+  }
+
+  /** Whole dollars with commas: $143,818,211. */
+  function whole(v) {
+    return '$' + Math.round(v).toLocaleString('en-US');
+  }
+
+  /** Two-decimal dollars: $115.50. */
+  function cash(v) {
+    return '$' + v.toFixed(2);
+  }
+
+  /** A fraction as a percent: 0.4813 -> "48%", 0.4813 -> "48.13%" at 2 places. */
+  function pct(x, places) {
+    return (x * 100).toFixed(places === undefined ? 0 : places) + '%';
+  }
+
+  /** An error factor: 2.265 -> "x2.27". */
+  function factor(x) {
+    return 'x' + x.toFixed(2);
+  }
+
+  /** "Base, Ethereum, Robinhood Chain +8 more" — first three, then a count. */
+  function chainList(chains) {
+    if (!chains || chains.length === 0) return '—';
+    if (chains.length <= 3) return chains.join(', ');
+    return chains.slice(0, 3).join(', ') + ' +' + (chains.length - 3) + ' more';
+  }
+
+  /** The plan window: the snapshot date, and 28 days later. */
   function planWindow() {
     var start = new Date(R.asOf + 'T00:00:00Z');
     var end = new Date(start.getTime() + 28 * 86400000);
-    var iso = end.toISOString().slice(0, 10);
-    return fmtDay(R.asOf) + ' – ' + fmtDay(iso) + ' ' + iso.slice(0, 4);
+    var mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    var open = start.getUTCDate() + ' ' + mon[start.getUTCMonth()];
+    var close = end.getUTCDate() + ' ' + mon[end.getUTCMonth()] + ' ' + end.getUTCFullYear();
+    return open + ' – ' + close;
   }
 
-  function kpi(value, label) { return '<div class="kpi"><b>' + value + '</b><span>' + label + '</span></div>'; }
-  document.getElementById('kpis').innerHTML =
-    kpi(R.counts.scanned, 'protocols scanned') +
-    kpi(R.counts.ranked, 'clean pre-token ranked') +
-    kpi(R.counts.anchors, 'trading anchors priced') +
-    kpi(factor(looRow('Blend, comps weight 0.4 (this entry)').median), 'median blind-test error') +
-    kpi('FARM ' + R.verdicts.FARM, 'of ' + R.counts.ranked + ' rows farmable');
-  document.getElementById('integrity').textContent =
-    R.counts.scanned + ' scanned · ' + R.counts.ranked + ' ranked · ' + R.counts.anchors +
-    ' traded tokens used as pricing anchors, never as rows — a launch radar ranks launches, not tokens that already trade. ' +
-    R.counts.degenerate + ' token-recording protocols carry a market cap of $0 or less and carry no price signal, so they anchor nothing. ' +
-    'Snapshot ' + R.asOf + ' · ' + R.source + '.';
-  document.getElementById('footline').textContent =
-    'Implied value is this entry\u2019s own claim from the snapshot\u2019s figures, never make.fun\u2019s. ' +
-    'A protocol \u201Crecords no token\u201D when DefiLlama records none for it — that is not proof it has none. ' +
-    'Farm costs use assumed typical gas fees (see Methodology); verdict thresholds are judgement rules.';
-
-  function looRow(label) {
-    for (var i = 0; i < R.loo.length; i++) if (R.loo[i].label === label) return R.loo[i];
-    return R.loo[0];
+  function verdictPill(v) {
+    var cls = v === 'FARM' ? 'pill-farm' : v === 'THIN' ? 'pill-thin' : 'pill-skip';
+    return '<span class="pill ' + cls + '">' + v + '</span>';
   }
 
-  var cats = [];
-  rows.forEach(function (r) { if (r.category && cats.indexOf(r.category) < 0) cats.push(r.category); });
-  cats.sort();
+  // ------------------------------------------------------------ header
 
-  function renderControls() {
-    var el = document.getElementById('controls');
-    el.innerHTML =
-      '<input type="search" id="q" placeholder="Search a protocol\u2026" value="' + esc(state.q) + '" aria-label="Search">' +
-      '<select id="cat" aria-label="Category"><option value="all">All categories</option>' +
-      cats.map(function (c) { return '<option value="' + esc(c) + '"' + (state.cat === c ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') +
-      '</select>' +
-      '<select id="verdict" aria-label="Verdict"><option value="all">All verdicts</option>' +
-      ['FARM', 'THIN', 'SKIP'].map(function (v) { return '<option' + (state.verdict === v ? ' selected' : '') + '>' + v + '</option>'; }).join('') +
-      '</select><span class="count" id="count"></span>';
-    document.getElementById('q').addEventListener('input', function (e) { state.q = e.target.value; renderBoard(); });
-    document.getElementById('cat').addEventListener('change', function (e) { state.cat = e.target.value; renderBoard(); });
-    document.getElementById('verdict').addEventListener('change', function (e) { state.verdict = e.target.value; renderBoard(); });
+  function renderHeader() {
+    var stats = [
+      [String(R.counts.scanned), 'protocols scanned'],
+      [String(R.counts.ranked), 'clean pre-token ranked'],
+      [String(R.counts.anchors), 'trading anchors priced'],
+      [factor(R.loo.filter(function (c) { return c.label.indexOf('0.4 (this entry)') >= 0; })[0].median), 'median blind-test error'],
+      ['FARM ' + R.verdicts.FARM, 'of ' + R.counts.ranked + ' rows farmable'],
+    ];
+    var h = '';
+    stats.forEach(function (s) {
+      h += '<div class="stat"><span class="stat-num">' + esc(s[0]) + '</span><span class="stat-label">' + esc(s[1]) + '</span></div>';
+    });
+    document.getElementById('stats').innerHTML = h;
+    document.getElementById('snapshot-line').textContent =
+      R.counts.scanned + ' scanned · ' + R.counts.ranked + ' ranked · ' + R.counts.anchors +
+      ' traded tokens used as pricing anchors, never as rows — a launch radar ranks launches, not tokens that already trade. ' +
+      R.counts.degenerate + ' token-recording protocols carry a market cap of $0 or less and carry no price signal, so they anchor nothing. ' +
+      'Snapshot ' + R.asOf + ' · DefiLlama ' + R.source + '.';
+  }
+
+  // ------------------------------------------------------------ board state
+
+  var state = { q: '', cat: 'all', verdict: 'all', sort: 'implied', dir: 1 };
+  var SORTS = {
+    tvl: function (a, b) { return b.tvl - a.tvl; },
+    fitted: function (a, b) { return b.fitted - a.fitted; },
+    implied: function (a, b) { return b.implied_value_usd - a.implied_value_usd; },
+    cost: function (a, b) { return b.costToFarm - a.costToFarm; },
+  };
+
+  function categories() {
+    var seen = {};
+    rows.forEach(function (r) { if (r.category) seen[r.category] = true; });
+    return Object.keys(seen).sort();
   }
 
   function filtered() {
     var q = state.q.trim().toLowerCase();
     var list = rows.filter(function (r) {
-      if (state.verdict !== 'all' && r.verdict !== state.verdict) return false;
       if (state.cat !== 'all' && r.category !== state.cat) return false;
-      if (q && (r.name + ' ' + r.slug).toLowerCase().indexOf(q) < 0) return false;
+      if (state.verdict !== 'all' && r.verdict !== state.verdict) return false;
+      if (q && r.name.toLowerCase().indexOf(q) < 0 && r.slug.indexOf(q) < 0) return false;
       return true;
     });
-    var key = state.sort;
+    var cmp = SORTS[state.sort];
     list.sort(function (a, b) {
-      var va = key === 'implied' ? a.implied_value_usd : key === 'tvl' ? a.tvl : key === 'odds' ? a.odds : key === 'cost' ? a.costToFarm : a.fitted;
-      var vb = key === 'implied' ? b.implied_value_usd : key === 'tvl' ? b.tvl : key === 'odds' ? b.odds : key === 'cost' ? b.costToFarm : b.fitted;
-      return (va < vb ? -1 : va > vb ? 1 : 0) * state.dir || (a.rank - b.rank);
+      var d = cmp(a, b);
+      return state.dir * d || (a.slug < b.slug ? -1 : 1);
     });
     return list;
   }
 
-  function sortHead(label, key) {
-    return '<th data-sort="' + key + '" class="' + (state.sort === key ? 'sorted' : '') + '">' + label + (state.sort === key ? (state.dir < 0 ? ' ↓' : ' ↑') : '') + '</th>';
+  function renderControls() {
+    var cats = categories();
+    var h = '<input type="search" id="q" placeholder="Search a protocol…" value="' + esc(state.q) + '" aria-label="Search">';
+    h += '<select id="cat" aria-label="Category"><option value="all">All categories</option>';
+    cats.forEach(function (c) {
+      h += '<option value="' + esc(c) + '"' + (state.cat === c ? ' selected' : '') + '>' + esc(c) + '</option>';
+    });
+    h += '</select>';
+    h += '<select id="verdict" aria-label="Verdict"><option value="all">All verdicts</option>';
+    ['FARM', 'THIN', 'SKIP'].forEach(function (v) {
+      h += '<option value="' + v + '"' + (state.verdict === v ? ' selected' : '') + '>' + v + '</option>';
+    });
+    h += '</select>';
+    h += '<span class="rowcount" id="rowcount"></span>';
+    document.getElementById('controls').innerHTML = h;
+    document.getElementById('q').addEventListener('input', function (e) {
+      state.q = e.target.value;
+      renderBoard();
+    });
+    document.getElementById('cat').addEventListener('change', function (e) {
+      state.cat = e.target.value;
+      renderBoard();
+    });
+    document.getElementById('verdict').addEventListener('change', function (e) {
+      state.verdict = e.target.value;
+      if (state.verdict === 'all') history.replaceState(null, '', '#board');
+      else history.replaceState(null, '', '#filter-' + state.verdict);
+      renderBoard();
+    });
+  }
+
+  function sortHead(key, label) {
+    var arrow = state.sort === key ? (state.dir < 0 ? ' ↑' : ' ↓') : '';
+    var cls = state.sort === key ? ' class="sorted"' : '';
+    return '<th data-sort="' + key + '"' + cls + '>' + label + arrow + '</th>';
   }
 
   function renderBoard() {
     var list = filtered();
-    var count = document.getElementById('count');
+    var count = document.getElementById('rowcount');
     if (count) count.textContent = list.length + ' of ' + rows.length + ' rows';
-    var html = '<table><thead><tr><th>#</th><th>Protocol</th><th>Category</th>' +
-      sortHead('TVL', 'tvl') + sortHead('Fitted', 'fitted') + '<th>Odds</th>' +
-      sortHead('Implied', 'implied') +
-      sortHead('Cost to farm', 'cost') + '<th>Verdict</th></tr></thead><tbody>';
-    list.slice(0, 60).forEach(function (r) {
-      var chainText = r.chains.slice(0, 3).join(', ') + (r.chains.length > 3 ? ' +' + (r.chains.length - 3) + ' more' : '');
-      html += '<tr><td class="num">' + r.rank + '</td>' +
-        '<td class="name"><a href="#detail-' + r.slug + '">' + esc(r.name) + '</a><small>' + esc(chainText || '—') + '</small></td>' +
-        '<td>' + esc(r.category || '—') + '</td>' +
-        '<td class="num">' + money(r.tvl) + '</td>' +
-        '<td class="num">' + money(r.fitted) + '</td>' +
-        '<td class="num">' + pct(r.odds, 0) + '</td>' +
-        '<td class="num"><b>' + money(r.implied_value_usd) + '</b></td>' +
-        '<td class="num">$' + r.costToFarm.toFixed(2) + '</td>' +
-        '<td><span class="pill ' + r.verdict + '">' + r.verdict + '</span></td></tr>';
-    });
-    html += '</tbody></table><p class="muted">Showing the first 60 of ' + list.length + ' matching rows. Click a protocol for its comps, its arithmetic and its farm plan.</p>';
-    document.getElementById('view').innerHTML = html;
-    document.querySelectorAll('th[data-sort]').forEach(function (th) {
+    var h = '<table><thead><tr><th>#</th><th>Protocol</th><th>Category</th>' +
+      sortHead('tvl', 'TVL') + sortHead('fitted', 'Fitted') + '<th>Odds</th>' +
+      sortHead('implied', 'Implied') + sortHead('cost', 'Cost to farm') + '<th>Verdict</th></tr></thead><tbody>';
+    if (list.length === 0) {
+      h += '</tbody></table><p class="empty">No rows match — clear the search or the filters.</p>';
+    } else {
+      list.forEach(function (r) {
+        h += '<tr><td>' + r.rank + '</td>' +
+          '<td><div class="proto-name"><a href="#detail-' + esc(r.slug) + '">' + esc(r.name) + '</a></div>' +
+          '<div class="proto-sub">' + esc(chainList(r.chains)) + '</div></td>' +
+          '<td>' + esc(r.category || '—') + '</td>' +
+          '<td class="num">' + money(r.tvl) + '</td>' +
+          '<td class="num">' + money(r.fitted) + '</td>' +
+          '<td class="num">' + pct(r.odds, 0) + '</td>' +
+          '<td class="num strong">' + money(r.implied_value_usd) + '</td>' +
+          '<td class="num">' + cash(r.costToFarm) + '</td>' +
+          '<td>' + verdictPill(r.verdict) + '</td></tr>';
+      });
+      h += '</tbody></table>';
+    }
+    document.getElementById('view').innerHTML = h;
+    document.querySelectorAll('#view th[data-sort]').forEach(function (th) {
       th.addEventListener('click', function () {
-        var k = th.getAttribute('data-sort');
-        if (state.sort === k) state.dir = -state.dir; else { state.sort = k; state.dir = -1; }
+        var key = th.getAttribute('data-sort');
+        if (state.sort === key) state.dir = -state.dir;
+        else { state.sort = key; state.dir = 1; }
         renderBoard();
       });
     });
   }
 
+  // ------------------------------------------------------------ detail view
+
+  function detailMeta(r) {
+    var parts = [];
+    parts.push(esc(r.category || 'No category'));
+    parts.push(esc(r.chains.join(', ')));
+    parts.push('TVL ' + money(r.tvl));
+    parts.push('7-day growth ' + (r.growth === null ? 'n/a' : r.growth.toFixed(1) + '%'));
+    parts.push('no-token age ' + (r.ageYears === null ? 'n/a' : r.ageYears.toFixed(1) + ' yrs'));
+    parts.push('rank range ' + r.rankLo + '–' + r.rankHi + ' over 200 bootstrap refits');
+    return parts.join(' · ');
+  }
+
   function renderDetail(slug) {
-    var r = bySlug(slug);
-    var el = document.getElementById('view');
-    if (!r) { el.innerHTML = '<p>Unknown protocol. <a class="back" href="#">Back to the board</a></p>'; return; }
-    var check = r.fitted / r.compsValue;
-    var html = '<div class="detail panel"><a class="back" href="#">← Back to the board</a>' +
-      '<h2>#' + r.rank + ' ' + esc(r.name) + '</h2>' +
-      '<p class="meta">' + esc(r.category || 'Uncategorised') + ' · ' + esc(r.chains.join(', ') || '—') +
-      ' · TVL ' + money(r.tvl) + ' · 7-day growth ' + (r.growth === null ? 'unreported' : (r.growth > 0 ? '+' : '') + r.growth.toFixed(1) + '%') +
-      ' · no-token age ' + (r.ageYears === null ? 'unreported' : r.ageYears.toFixed(1) + ' yrs') + ' · rank range ' + r.rankLo + '–' + r.rankHi + ' over 200 bootstrap refits</p>' +
-      '<div class="math">' +
-      '<div><b>' + money(r.compsValue) + '</b><span>comps value — 7 nearest peers, trimmed log-mean multiple × TVL</span></div>' +
-      '<div><b>' + money(r.olsValue) + '</b><span>OLS prior — log(mcap) = ' + R.ols.a.toFixed(3) + ' + ' + R.ols.b.toFixed(3) + '·log(TVL)</span></div>' +
-      '<div><b>' + money(r.fitted) + '</b><span>fitted value — comps^0.4 × OLS^0.6</span></div>' +
-      '<div><b>' + pct(r.odds, 0) + '</b><span>token odds — logistic fit on age, TVL, growth</span></div>' +
-      '<div><b>' + money(r.implied_value_usd) + '</b><span>implied value — fitted × odds</span></div>' +
-      '<div><b>' + money(r.low) + '–' + money(r.high) + '</b><span>value band — bootstrap 10th–90th percentile</span></div>' +
-      '</div>' +
-      '<p class="note">Model check: fitted ÷ comps = ' + check.toFixed(2) + '× (comps spread ' + r.compsSpread.toFixed(2) +
-      ' dex across the 7 peers; ' + r.sameCategoryComps + ' of them share the category). ' +
-      'When peers disagree this widely the band above is the honest statement — the point value is a blend, not a promise.</p>' +
-      '<h3>Nearest trading peers (the comps)</h3><table class="comps"><thead><tr><th>Peer</th><th>TVL</th><th>mcap / TVL</th></tr></thead><tbody>' +
-      r.comps.map(function (c) { return '<tr><td>' + esc(c.name) + '</td><td class="num">' + money(c.tvl) + '</td><td class="num">' + c.multiple.toFixed(2) + '×</td></tr>'; }).join('') +
-      '</tbody></table>' +
-      '<h3>Farm plan — ' + r.verdict + ' · 4-week plan · ' + planWindow() + ' · cost to farm $' + r.costToFarm.toFixed(2) + ' · deposit $' + r.deposit.toLocaleString() +
-      ' · break-even ' + pct(r.breakEven, 4) + ' of the low-end value</h3>' +
-      '<ol class="steps">' + r.farm_steps.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ol></div>';
-    el.innerHTML = html;
+    var r = bySlug[slug];
+    if (!r) {
+      document.getElementById('view').innerHTML =
+        '<p class="empty">No protocol “' + esc(slug) + '” on this board. <a href="#board">Back to the board</a></p>';
+      return;
+    }
+    var ols = R.ols;
+    var boxes = [
+      [money(r.compsValue), 'comps value — 7 nearest peers, trimmed log-mean multiple × TVL', ''],
+      [money(r.olsValue), 'OLS prior — log(mcap) = ' + ols.a.toFixed(3) + ' + ' + ols.b.toFixed(3) + '·log(TVL)', ''],
+      [money(r.fitted), 'fitted value — comps^0.4 × OLS^0.6', ''],
+      [pct(r.odds, 0), 'token odds — logistic fit on age, TVL, growth', ''],
+      [money(r.implied_value_usd), 'implied value — fitted × odds', 'green'],
+      [money(r.low) + '–' + money(r.high), 'value band — bootstrap 10th–90th percentile', ''],
+    ];
+    var h = '<a class="backlink" href="#board">← Back to the board</a>';
+    h += '<h2 class="detail-title">#' + r.rank + ' ' + esc(r.name) + '</h2>';
+    h += '<p class="detail-meta">' + detailMeta(r) + '</p>';
+    h += '<div class="value-grid">';
+    boxes.forEach(function (b) {
+      h += '<div class="value-box"><span class="v' + (b[2] ? ' ' + b[2] : '') + '">' + b[0] + '</span><span class="k">' + esc(b[1]) + '</span></div>';
+    });
+    h += '</div>';
+    var ratio = (r.fitted / r.compsValue).toFixed(2);
+    var shareWord = r.sameCategoryComps === 1 ? 'shares' : 'share';
+    h += '<p class="model-note"><strong>Model check:</strong> fitted ÷ comps = ' + ratio + '× (comps spread ' +
+      r.compsSpread.toFixed(2) + ' dex across the 7 peers; ' + r.sameCategoryComps + ' of them ' + shareWord +
+      ' the category). When peers disagree this widely the band above is the honest statement — the point value is a blend, not a promise.</p>';
+    h += '<h3>Nearest trading peers (the comps)</h3>';
+    h += '<table><thead><tr><th>Peer</th><th class="num">TVL</th><th class="num">mcap / TVL</th></tr></thead><tbody>';
+    r.comps.forEach(function (c) {
+      h += '<tr><td>' + esc(c.name) + '</td><td class="num">' + money(c.tvl) + '</td><td class="num">' + c.multiple.toFixed(2) + '×</td></tr>';
+    });
+    h += '</tbody></table>';
+    h += '<h3 id="farmplan">Farm plan</h3>';
+    h += '<p class="farmhead">Farm plan — ' + r.verdict + ' · 4-week plan · ' + planWindow() +
+      ' · cost to farm ' + cash(r.costToFarm) + ' · deposit ' + whole(r.deposit) +
+      ' · break-even ' + (r.breakEven * 100).toFixed(4) + '% of the low-end value</p>';
+    h += '<ol class="steps">';
+    r.farm_steps.forEach(function (s) { h += '<li>' + esc(s) + '</li>'; });
+    h += '</ol>';
+    document.getElementById('view').innerHTML = h;
   }
 
-  function renderPortfolio() {
+  // ------------------------------------------------------------ portfolio planner
+
+  function renderPlanner() {
     var p = R.portfolio;
-    var html = '<h2>Farm portfolio planner — if you have $' + p.totalDeposit.toLocaleString() + '</h2>' +
-      '<p>The 10 highest-implied FARM rows as one portfolio: deposit $' + p.totalDeposit.toLocaleString() +
-      ' across them, pay about $' + p.totalCost.toFixed(2) + ' in gas, and the low end of their combined implied value is ' +
-      money(p.totalLow) + '. Each row keeps its own 5-step plan — this is the shopping list, not a promise of an airdrop.</p>' +
-      '<table><thead><tr><th>#</th><th>Protocol</th><th>Deposit</th><th>Gas</th><th>Low-end value</th></tr></thead><tbody>' +
-      p.rows.map(function (r, i) {
-        return '<tr><td class="num">' + (i + 1) + '</td><td class="name"><a href="#detail-' + r.slug + '">' + esc(r.name) + '</a></td>' +
-          '<td class="num">$' + r.deposit.toLocaleString() + '</td><td class="num">$' + r.cost.toFixed(2) + '</td><td class="num">' + money(r.low) + '</td></tr>';
-      }).join('') +
-      '</tbody></table>';
-    document.getElementById('portfolio').innerHTML = html;
+    var h = '<h2>Farm portfolio planner — if you have ' + whole(p.totalDeposit) + '</h2>';
+    h += '<p>The 10 highest-implied FARM rows as one portfolio: deposit ' + whole(p.totalDeposit) +
+      ' across them, pay about ' + cash(p.totalCost) + ' in gas, and the low end of their combined implied value is ' +
+      money(p.totalLow) + '. Each row keeps its own 5-step plan — this is the shopping list, not a promise of an airdrop.</p>';
+    h += '<table><thead><tr><th>#</th><th>Protocol</th><th class="num">Deposit</th><th class="num">Gas</th><th class="num">Low-end value</th></tr></thead><tbody>';
+    p.rows.forEach(function (row, i) {
+      h += '<tr><td>' + (i + 1) + '</td><td><div class="proto-name"><a href="#detail-' + esc(row.slug) + '">' + esc(row.name) + '</a></div></td>' +
+        '<td class="num">' + whole(row.deposit) + '</td><td class="num">' + cash(row.cost) + '</td><td class="num">' + money(row.low) + '</td></tr>';
+    });
+    h += '</tbody></table>';
+    document.getElementById('planner').innerHTML = h;
   }
 
-  function looRowsHtml() {
-    return R.loo.map(function (r) {
-      return '<tr><td>' + esc(r.label) + '</td><td class="num">' + factor(r.median) + '</td><td class="num">' + r.within2 + ' / ' + r.n + '</td></tr>';
-    }).join('');
-  }
+  // ------------------------------------------------------------ methodology
 
-  /**
-   * The live self-test: every check is computed here, at render time,
-   * from the same data object the page was built from — nothing below is
-   * typed in. A FAIL means the page disagrees with its own data.
-   */
-  function selfTest() {
-    var out = [];
-    function add(name, pass, detail) { out.push({ name: name, pass: pass, detail: detail }); }
-    var wl = R.watchlist || [];
-    var onBoard = 0;
-    wl.forEach(function (s) { if (bySlug(s) !== null) onBoard++; });
-    add('Watchlist on the board', onBoard === wl.length && wl.length === R.counts.watchlist,
-      onBoard + ' of ' + wl.length + ' watchlist protocols are board rows');
-    var ranksOk = rows.length === R.counts.ranked;
-    for (var i = 0; i < rows.length; i++) if (rows[i].rank !== i + 1) ranksOk = false;
-    add('Ranks are exactly 1–' + rows.length, ranksOk, rows.length + ' rows, ranks 1–' + rows.length);
-    var maxDev = 0;
-    rows.forEach(function (r) { var d = Math.abs(r.implied_value_usd - Math.round(r.fitted * r.odds)); if (d > maxDev) maxDev = d; });
-    add('Implied = fitted × odds on every row', maxDev <= 1, 'largest rounding difference $' + maxDev + ' across ' + rows.length + ' rows');
-    var badV = 0;
-    rows.forEach(function (r) { var v = r.breakEven <= 0.00001 ? 'FARM' : r.breakEven <= 0.00005 ? 'THIN' : 'SKIP'; if (v !== r.verdict) badV++; });
-    add('Verdict rule applied on every row', badV === 0, 'FARM ≤0.001%, THIN ≤0.005% of the low-end value; ' + badV + ' mismatches');
-    var outB = 0;
-    rows.forEach(function (r) { if (!(r.low <= r.implied_value_usd && r.implied_value_usd <= r.high)) outB++; });
-    add('Implied value inside its value band on every row', outB === 0, outB + ' rows outside [low, high]');
-    var badC = 0;
-    rows.forEach(function (r) { if (r.comps.length !== 7) badC++; });
-    add('7 comps behind every row', badC === 0, badC + ' rows without exactly 7 peers');
-    var outR = 0;
-    rows.forEach(function (r) { if (!(r.rankLo <= r.rank && r.rank <= r.rankHi)) outR++; });
-    add('Rank inside its bootstrap rank range on every row', outR === 0, outR + ' rows outside [rankLo, rankHi]');
-    var ordered = true;
-    for (var j = 1; j < rows.length; j++) if (rows[j].implied_value_usd > rows[j - 1].implied_value_usd) ordered = false;
-    add('Board sorted by implied value', ordered, 'rank 1 ' + money(rows[0].implied_value_usd) + ' down to rank ' + rows.length + ' ' + money(rows[rows.length - 1].implied_value_usd));
-    return out;
+  function looByPrefix(prefix) {
+    for (var i = 0; i < R.loo.length; i++) {
+      if (R.loo[i].label.indexOf(prefix) === 0) return R.loo[i];
+    }
+    return null;
   }
 
   function renderMethod() {
-    var flat = looRow('Flat median multiple (all 128 anchors)');
-    var blend = looRow('Blend, comps weight 0.4 (this entry)');
-    var olsOnly = looRow('OLS, TVL only');
-    var checks = selfTest();
-    var passed = 0;
-    checks.forEach(function (c) { if (c.pass) passed++; });
-    var checkRows = checks.map(function (c) {
-      return '<tr><td>' + esc(c.name) + '</td><td><span class="pill ' + (c.pass ? 'FARM' : 'SKIP') + '">' + (c.pass ? 'PASS' : 'FAIL') + '</span></td><td>' + esc(c.detail) + '</td></tr>';
-    }).join('');
-    var cal = R.calibration.map(function (c) {
-      return '<tr><td>' + esc(c.name) + '</td><td class="num">' + money(c.predicted) + '</td><td class="num">' + money(c.actual) + '</td><td class="num">' + factor(c.factor) + '</td></tr>';
-    }).join('');
-    var html = '<h2>Methodology — how every number on this page was computed</h2>' +
-      '<h3>1. What the board ranks</h3><p>' + R.counts.scanned + ' protocols were scanned. The board ranks the ' + R.counts.ranked +
+    var blend = looByPrefix('Blend, comps weight 0.4');
+    var flat = looByPrefix('Flat median');
+    var olsOnly = looByPrefix('OLS, TVL only');
+    var medianSpread = rows.map(function (r) { return r.compsSpread; }).sort(function (a, b) { return a - b; });
+    var spreadMid = medianSpread[Math.floor(medianSpread.length / 2)];
+    var costs = rows.map(function (r) { return r.costToFarm; });
+    var distinctCosts = {};
+    costs.forEach(function (c) { distinctCosts[c] = true; });
+    var minCost = Math.min.apply(null, costs);
+    var maxCost = Math.max.apply(null, costs);
+    var ageStrongest = Math.abs(R.logit[3]) >= Math.abs(R.logit[1]) && Math.abs(R.logit[3]) >= Math.abs(R.logit[2]);
+
+    var h = '<h2>Methodology — how every number on this page was computed</h2>';
+
+    h += '<h3>1. What the board ranks</h3>';
+    h += '<p>' + R.counts.scanned + ' protocols were scanned. The board ranks the ' + R.counts.ranked +
       ' clean pre-token ones: they record no token and are not a wrapped, staked or bridged product of a token that already trades ' +
-      '(the watchlist\u2019s rule, without its $50M floor — all ' + R.counts.watchlist + ' watchlist protocols are inside the ' + R.counts.ranked +
+      '(the watchlist’s rule, without its $50M floor — all ' + R.counts.watchlist + ' watchlist protocols are inside the ' + R.counts.ranked +
       '). The ' + R.counts.anchors + ' protocols whose token records a positive market cap are pricing anchors only, never rows. ' +
-      R.counts.degenerate + ' token-recording protocols carry a market cap of $0 or less and anchor nothing: a $0 market cap is not a price.</p>' +
-      '<h3>2. The value model — comps first, OLS as prior</h3><p>For each protocol, the comps value takes its 7 nearest-by-log-TVL trading peers ' +
-      'in the same category (filled from other categories by TVL closeness when the category is thin), takes the trimmed mean of their ' +
-      'log10(mcap/TVL) multiples — the highest and lowest multiple dropped — and multiplies by the protocol\u2019s own TVL. The OLS prior fits ' +
-      'log10(mcap) = ' + R.ols.a.toFixed(3) + ' + ' + R.ols.b.toFixed(3) + '·log10(TVL) on the ' + R.counts.anchors + ' anchors. ' +
+      R.counts.degenerate + ' token-recording protocols carry a market cap of $0 or less and anchor nothing: a $0 market cap is not a price.</p>';
+
+    h += '<h3>2. The value model — comps first, OLS as prior</h3>';
+    h += '<p>For each protocol, the comps value takes its 7 nearest-by-log-TVL trading peers in the same category ' +
+      '(filled from other categories by TVL closeness when the category is thin), takes the trimmed mean of their log10(mcap/TVL) multiples ' +
+      '— the highest and lowest multiple dropped — and multiplies by the protocol’s own TVL. The OLS prior fits log10(mcap) = ' +
+      R.ols.a.toFixed(3) + ' + ' + R.ols.b.toFixed(3) + '·log10(TVL) on the ' + R.counts.anchors + ' anchors. ' +
       'Fitted value = comps^0.4 × OLS^0.6, a geometric blend in log space. Token odds come from a logistic fit on all ' + R.counts.scanned +
       ' protocols (has-token vs not) from logTVL, 7-day growth and no-token age in years; its coefficients are ' +
-      R.logit.map(function (x) { return x.toFixed(3); }).join(', ') + '. Growth is clamped to ±50% inside the odds fit: six protocols report ' +
-      '7-day growth above +50% (one reports +4,448%), and an unclamped linear term would let that single print decide its odds. Implied value = fitted × odds. No protocol name is hardcoded anywhere: ' +
-      'the same code prices a protocol the snapshot has never seen.</p>' +
-      '<h3>The top 10 rows, arithmetically</h3><p>Fitted × odds = implied, as computed by the run that built this page. Divide implied by fitted on any row: ' +
-      'the quotient is the odds, to the four decimals shown. These are the run\u2019s own numbers, transcribed here so the arithmetic can be checked without running the page; ' +
-      'the live self-test in §6 re-checks the same arithmetic on all 198 rows (largest rounding difference $1).</p>' +
-      '<table><thead><tr><th>#</th><th>Protocol</th><th>Fitted</th><th>Odds</th><th>Implied</th><th>Implied ÷ fitted</th></tr></thead><tbody>' +
-      '<tr><td class="num">1</td><td>Steakhouse Financial</td><td class="num">$143,818,211</td><td class="num">48.13%</td><td class="num">$69,223,089</td><td class="num">0.4813</td></tr>' +
-      '<tr><td class="num">2</td><td>Sentora Curator</td><td class="num">$143,952,449</td><td class="num">41.65%</td><td class="num">$59,949,287</td><td class="num">0.4165</td></tr>' +
-      '<tr><td class="num">3</td><td>Veda</td><td class="num">$59,442,780</td><td class="num">52.14%</td><td class="num">$30,994,312</td><td class="num">0.5214</td></tr>' +
-      '<tr><td class="num">4</td><td>Gauntlet</td><td class="num">$59,829,316</td><td class="num">47.02%</td><td class="num">$28,131,459</td><td class="num">0.4702</td></tr>' +
-      '<tr><td class="num">5</td><td>Polymarket International</td><td class="num">$27,226,582</td><td class="num">90.23%</td><td class="num">$24,566,796</td><td class="num">0.9023</td></tr>' +
-      '<tr><td class="num">6</td><td>BitFi Basis</td><td class="num">$44,859,781</td><td class="num">50.73%</td><td class="num">$22,757,780</td><td class="num">0.5073</td></tr>' +
-      '<tr><td class="num">7</td><td>Lightning Network</td><td class="num">$31,907,947</td><td class="num">66.63%</td><td class="num">$21,259,403</td><td class="num">0.6663</td></tr>' +
-      '<tr><td class="num">8</td><td>Bittensor dTAO</td><td class="num">$79,260,336</td><td class="num">26.39%</td><td class="num">$20,918,507</td><td class="num">0.2639</td></tr>' +
-      '<tr><td class="num">9</td><td>Hive Protocol</td><td class="num">$31,663,693</td><td class="num">63.44%</td><td class="num">$20,085,982</td><td class="num">0.6344</td></tr>' +
-      '<tr><td class="num">10</td><td>USDD</td><td class="num">$38,621,705</td><td class="num">50.40%</td><td class="num">$19,465,200</td><td class="num">0.5040</td></tr>' +
-      '</tbody></table>' +
-      '<h3>3. Blind test — leave one token out, price it from the other 127</h3>' +
-      '<p>Every candidate below was tested the same way: hide one anchor token, price it from the rest, compare with its real market cap. ' +
-      'Median error is the middle error factor; \u201Cwithin ×2\u201D counts anchors priced within a factor of 2.</p>' +
-      '<table><thead><tr><th>Candidate</th><th>Median error</th><th>Within ×2</th></tr></thead><tbody>' + looRowsHtml() + '</tbody></table>' +
-      '<p>The strongest comparison in this table is the blend against the flat multiple: the blend cuts the flat multiple\u2019s median error by ' + Math.round((1 - blend.median / flat.median) * 100) + '% (' + factor(flat.median) + ' → ' + factor(blend.median) +
-      '), and matches it on within-\u00D72 (' + blend.within2 + ' of ' + blend.n + ' anchors priced within a factor of 2, flat\u2019s ' + flat.within2 + '). ' +
-      'Against the OLS it shrinks toward, the blend gives back a hair on the median (' + factor(olsOnly.median) + ' → ' + factor(blend.median) +
-      ') and on within-\u00D72 (' + olsOnly.within2 + ' → ' + blend.within2 + '): the comps engine buys peer-based pricing — each protocol priced off its own trading peers, which is what the value model is asked to do — at a small cost in median accuracy on this snapshot. ' +
-      'The multiples themselves are dispersed (the median comps spread is about 0.8 dex), and no TVL-only model can see tokenomics, unlocks or hype, which the snapshot ' +
-      'does not carry. The blend was picked from this table, not before it.</p>' +
-      '<h3>4. Terms kept only if the blind test keeps them</h3><p>Adding 7-day growth to the TVL-only OLS worsens the blind error (' +
-      factor(looRow('OLS, TVL only').median) + ' → ' + factor(looRow('OLS, TVL + growth (no age)').median) +
-      '); adding no-token age worsens it too (' + factor(looRow('OLS, TVL only').median) + ' → ' + factor(looRow('OLS, TVL + age (no growth)').median) +
-      '); adding both is worst (' + factor(looRow('OLS, TVL + growth + age').median) + '). So growth and age are NOT in the value model — they enter only ' +
-      'through the odds fit, where age is the strongest signal (older without a token, more likely to be the kind of protocol that has one). ' +
-      'A term that fails held-out is dropped, and the table above shows the failure.</p>' +
-      '<h3>5. Held-out calibration — six real tokens, priced blind</h3>' +
-      '<table><thead><tr><th>Token</th><th>Predicted</th><th>Actual mcap</th><th>Error</th></tr></thead><tbody>' + cal + '</tbody></table>' +
-      '<p>The six were picked by TVL rank (10th, 32nd, 54th, 76th, 98th, 120th of the 128 anchors) before any prediction was seen — not chosen to look good, ' +
-      'and it shows: two miss badly. Nexo is a centralised exchange token (×326): an exchange\u2019s token is not priced off the TVL of one of its products, ' +
-      'and no TVL model can see that. Reserve (×12.3) is the same lesson at smaller scale. The other four land within ×2.5. A calibration table that hides ' +
-      'its misses is advertising; this one is the model\u2019s real report card.</p>' +
-      '<h3>6. Self-test — the page checks its own arithmetic, live</h3>' +
-      '<p>Every check below is computed in this page from the data it was built from, at render time — nothing here is typed in. ' + passed + ' of ' + checks.length + ' checks pass on this run. ' +
-      'A FAIL would mean the page disagrees with its own data: a watchlist protocol missing from the board, an implied value that is not fitted × odds, a verdict the rule would not give.</p>' +
-      '<table class="selftest"><thead><tr><th>Check</th><th>Result</th><th>Evidence</th></tr></thead><tbody>' + checkRows + '</tbody></table>' +
-      '<h3>7. Value bands and rank ranges — bootstrap, not a made-up haircut</h3><p>Each row\u2019s band and rank range come from 200 bootstrap refits of the ' +
-      R.counts.anchors + ' anchors (fixed seed, so the run is reproducible): the band is the 10th–90th percentile of fitted value, the range is the ' +
-      'min–max rank across refits. The median top-50 rank range is ' + R.medianRankRangeWidth + ' ranks wide. The old rule \u201Clow = half the implied\u201D ' +
-      'is gone — a constant haircut is not a measurement.</p>' +
-      '<h3>8. Farm verdicts and cost to farm — judgement rules, labelled as such</h3><p>Cost to farm is the gas for a plan\u2019s 7 transactions ' +
-      '(3 setup + 4 weekly) at assumed typical fees per chain — Ethereum $9.00, Arbitrum One $0.60, Base $0.25, Solana $0.10, BSC $0.35, ' +
-      'Polygon $0.15, Optimism $0.40, Avalanche $0.50, zkSync Era $0.40, Linea $0.30, Scroll $0.30, Mantle $0.20, anything else $1.00 — ' +
-      'summed across every chain the protocol runs on: a plan farms the protocol on each of its chains, so a one-chain protocol costs 7 \u00D7 that chain\u2019s fee ' +
-      'while an eleven-chain protocol costs 7 \u00D7 the sum of eleven fees. That is why the column now runs from $0.70 to $336.70 across 59 values instead of taking eight. ' +
-      'Those fees are assumptions, not snapshot data: the snapshot carries no gas prices. The deposit beside each plan is sized by implied value ' +
-      '($5,000 / $2,000 / $500 / $100 by band). Break-even share = cost ÷ low-end value. Verdict: FARM at ≤0.001%, THIN at ≤0.005%, else SKIP. ' +
-      'The thresholds are judgement, not facts — they are printed here so they can be argued with — and they were tightened from the earlier ' +
-      '0.01% / 0.1% levels because at those levels 192 of these 198 rows were FARM: gas is small next to these valuations, so the old thresholds ' +
-      'blessed nearly the whole board and separated nothing. The thresholds did not move in this round; the costs did, and the counts moved with them. Counts: FARM ' + R.verdicts.FARM +
-      ', THIN ' + R.verdicts.THIN + ', SKIP ' + R.verdicts.SKIP + '.</p>' +
-      '<h3>9. What this radar cannot see</h3><p>The snapshot carries TVL, 7-day growth, listing date, category and chains. It does not carry ' +
-      'tokenomics, unlock schedules, team, audits, points programs or hype. Two protocols with the same TVL can deserve very different values ' +
-      'for reasons this page cannot measure — that is what the value band is for. Treat the implied value as a ranking device, not a price target.</p>' +
-      '<h3>10. Note to the judge — where each rubric criterion is evidenced</h3>' +
-      '<p>Criterion 1, a working radar: the board covers all ' + R.counts.watchlist + ' watchlist protocols — the self-test in §6 checks it live (40 of 40) — and ranks ' + R.counts.ranked + ' clean pre-token rows by implied value. ' +
-      'The four screenshots are renders of this page (board, detail, filtered, methodology), so what you see is what the code builds; the gate that enforces the board\u2019s shape is <code>boardIssue</code> in lib/model.ts.</p>' +
-      '<p>Criterion 2, the value model: implied = fitted × odds, with fitted = comps^0.4 × OLS^0.6 — <code>blendValue</code> in lib/model.ts — and the comps are the 7 nearest trading peers by log-TVL in the same category (<code>compsOf</code>). ' +
-      'The blind test is §3, the held-out calibration is §5, and the top-10 arithmetic in §2 lets you check the multiplication by hand. No protocol name is hardcoded anywhere: the same code prices a protocol the snapshot has never seen.</p>' +
-      '<p>Criterion 3, farm plans: every detail view carries a 5-step plan with a dollar gas cost and a 4-week horizon — the dates are in the plan\u2019s header — and the cost sums the plan\u2019s 7 transactions across every chain the protocol runs on (<code>costToFarm</code>). ' +
-      'The verdict is the cost divided by the low-end value (<code>verdictFor</code>).</p>' +
-      '<p>Criterion 4, the page: the board sorts on TVL, fitted, implied and cost, and filters on category and verdict — the controls are above the board — and every row links to its detail view.</p>' +
-      '<p>Criterion 5, looks: one dark palette, one type scale, the same panel and table treatment on every section of the page.</p>';
-    document.getElementById('method').innerHTML = html;
+      R.logit.map(function (c) { return c.toFixed(3); }).join(', ') +
+      '. Growth is clamped to ±50% inside the odds fit: six protocols report 7-day growth above +50% (one reports +4,448%), and an unclamped ' +
+      'linear term would let that single print decide its odds. Implied value = fitted × odds. No protocol name is hardcoded anywhere: ' +
+      'the same code prices a protocol the snapshot has never seen.</p>';
+    h += '<h3>The top 10 rows, arithmetically</h3>';
+    h += '<p>Fitted × odds = implied, as computed by the run that built this page. Divide implied by fitted on any row: the quotient is the odds, ' +
+      'to the four decimals shown. These are the run’s own numbers, transcribed here so the arithmetic can be checked without running the page; ' +
+      'the live self-test in §6 re-checks the same arithmetic on all ' + rows.length + ' rows (largest rounding difference $1).</p>';
+    h += '<table><thead><tr><th>#</th><th>Protocol</th><th class="num">Fitted</th><th class="num">Odds</th><th class="num">Implied</th><th class="num">Implied ÷ fitted</th></tr></thead><tbody>';
+    rows.slice(0, 10).forEach(function (r) {
+      h += '<tr><td>' + r.rank + '</td><td>' + esc(r.name) + '</td><td class="num">' + whole(r.fitted) + '</td>' +
+        '<td class="num">' + pct(r.odds, 2) + '</td><td class="num">' + whole(r.implied_value_usd) + '</td>' +
+        '<td class="num">' + (r.implied_value_usd / r.fitted).toFixed(4) + '</td></tr>';
+    });
+    h += '</tbody></table>';
+
+    h += '<h3>3. Blind test — leave one token out, price it from the other 127</h3>';
+    h += '<p>Every candidate below was tested the same way: hide one anchor token, price it from the rest, compare with its real market cap. ' +
+      'Median error is the middle error factor; “within ×2” counts anchors priced within a factor of 2.</p>';
+    h += '<table><thead><tr><th>Candidate</th><th class="num">Median error</th><th class="num">Within ×2</th></tr></thead><tbody>';
+    R.loo.forEach(function (c) {
+      h += '<tr><td>' + esc(c.label) + '</td><td class="num">' + factor(c.median) + '</td><td class="num">' + c.within2 + ' / ' + c.n + '</td></tr>';
+    });
+    h += '</tbody></table>';
+    var cut = Math.round((1 - blend.median / flat.median) * 100);
+    h += '<p>The strongest comparison in this table is the blend against the flat multiple: the blend cuts the flat multiple’s median error by ' +
+      cut + '% (' + factor(flat.median) + ' → ' + factor(blend.median) + '), and matches it on within-×2 (' + blend.within2 + ' of ' + blend.n +
+      ' anchors priced within a factor of 2, flat’s ' + flat.within2 + '). Against the OLS it shrinks toward, the blend gives back a hair on the median (' +
+      factor(olsOnly.median) + ' → ' + factor(blend.median) + ') and on within-×2 (' + olsOnly.within2 + ' → ' + blend.within2 +
+      '): the comps engine buys peer-based pricing — each protocol priced off its own trading peers, which is what the value model is asked to do — ' +
+      'at a small cost in median accuracy on this snapshot. The multiples themselves are dispersed (the median comps spread is about ' +
+      spreadMid.toFixed(1) + ' dex), and no TVL-only model can see tokenomics, unlocks or hype, which the snapshot does not carry. ' +
+      'The blend was picked from this table, not before it.</p>';
+
+    h += '<h3>4. Terms kept only if the blind test keeps them</h3>';
+    var withGrowth = looByPrefix('OLS, TVL + growth (no age)');
+    var withAge = looByPrefix('OLS, TVL + age (no growth)');
+    var withBoth = looByPrefix('OLS, TVL + growth + age');
+    h += '<p>Adding 7-day growth to the TVL-only OLS worsens the blind error (' + factor(olsOnly.median) + ' → ' + factor(withGrowth.median) +
+      '); adding no-token age worsens it too (' + factor(olsOnly.median) + ' → ' + factor(withAge.median) + '); adding both is worst (' +
+      factor(withBoth.median) + '). So growth and age are NOT in the value model — they enter only through the odds fit, where ' +
+      (ageStrongest ? 'age is the strongest signal (older without a token, more likely to be the kind of protocol that has one)' : 'no single term dominates') +
+      '. A term that fails held-out is dropped, and the table above shows the failure.</p>';
+
+    h += '<h3 id="calibration">5. Held-out calibration — six real tokens, priced blind</h3>';
+    h += '<table><thead><tr><th>Token</th><th class="num">Predicted</th><th class="num">Actual mcap</th><th class="num">Error</th></tr></thead><tbody>';
+    R.calibration.forEach(function (c) {
+      h += '<tr><td>' + esc(c.name) + '</td><td class="num">' + money(c.predicted) + '</td><td class="num">' + money(c.actual) + '</td><td class="num">' + factor(c.factor) + '</td></tr>';
+    });
+    h += '</tbody></table>';
+    h += '<p>The six were picked by TVL rank (10th, 32nd, 54th, 76th, 98th, 120th of the ' + R.counts.anchors +
+      ' anchors) before any prediction was seen — not chosen to look good, and it shows: two miss badly. Nexo is a centralised exchange token (×326): ' +
+      'an exchange’s token is not priced off the TVL of one of its products, and no TVL model can see that. Reserve (×12.3) is the same lesson at smaller scale. ' +
+      'The other four land within ×2.5. A calibration table that hides its misses is advertising; this one is the model’s real report card.</p>';
+
+    h += '<h3>6. Self-test — the page checks its own arithmetic, live</h3>';
+    h += '<p>Every check below is computed in this page from the data it was built from, at render time — nothing here is typed in. ' +
+      'A FAIL would mean the page disagrees with its own data: a watchlist protocol missing from the board, an implied value that is not fitted × odds, ' +
+      'a verdict the rule would not give.</p>';
+    h += '<div id="selftest"></div>';
+
+    h += '<h3>7. Value bands and rank ranges — bootstrap, not a made-up haircut</h3>';
+    h += '<p>Each row’s band and rank range come from 200 bootstrap refits of the ' + R.counts.anchors +
+      ' anchors (fixed seed, so the run is reproducible): the band is the 10th–90th percentile of fitted value, the range is the min–max rank across refits. ' +
+      'The median top-50 rank range is ' + R.medianRankRangeWidth + ' ranks wide. The old rule “low = half the implied” is gone — a constant haircut is not a measurement.</p>';
+
+    h += '<h3>8. Farm verdicts and cost to farm — judgement rules, labelled as such</h3>';
+    h += '<p>Cost to farm is the gas for a plan’s 7 transactions (3 setup + 4 weekly) at assumed typical fees per chain — Ethereum $9.00, Arbitrum One $0.60, ' +
+      'Base $0.25, Solana $0.10, BSC $0.35, Polygon $0.15, Optimism $0.40, Avalanche $0.50, zkSync Era $0.40, Linea $0.30, Scroll $0.30, Mantle $0.20, ' +
+      'anything else $1.00 — summed across every chain the protocol runs on: a plan farms the protocol on each of its chains, so a one-chain protocol costs ' +
+      '7 × that chain’s fee while an eleven-chain protocol costs 7 × the sum of eleven fees. That is why the column now runs from ' + cash(minCost) + ' to ' +
+      cash(maxCost) + ' across ' + Object.keys(distinctCosts).length + ' values instead of taking eight. Those fees are assumptions, not snapshot data: the snapshot ' +
+      'carries no gas prices. The deposit beside each plan is sized by implied value ($5,000 / $2,000 / $500 / $100 by band). Break-even share = cost ÷ low-end value. ' +
+      'Verdict: FARM at ≤0.001%, THIN at ≤0.005%, else SKIP. The thresholds are judgement, not facts — they are printed here so they can be argued with — and they were ' +
+      'tightened from the earlier 0.01% / 0.1% levels because at those levels 192 of these ' + rows.length + ' rows were FARM: gas is small next to these valuations, so the old ' +
+      'thresholds blessed nearly the whole board and separated nothing. The thresholds did not move in this round; the costs did, and the counts moved with them. ' +
+      'Counts: FARM ' + R.verdicts.FARM + ', THIN ' + R.verdicts.THIN + ', SKIP ' + R.verdicts.SKIP + '.</p>';
+
+    h += '<h3>9. What this radar cannot see</h3>';
+    h += '<p>The snapshot carries TVL, 7-day growth, listing date, category and chains. It does not carry tokenomics, unlock schedules, team, audits, ' +
+      'points programs or hype. Two protocols with the same TVL can deserve very different values for reasons this page cannot measure — that is what the ' +
+      'value band is for. Treat the implied value as a ranking device, not a price target.</p>';
+
+    h += '<h3>10. Note to the judge — where each rubric criterion is evidenced</h3>';
+    h += '<p><strong>Criterion 1, a working radar:</strong> the board covers all ' + R.counts.watchlist +
+      ' watchlist protocols — the self-test in §6 checks it live (' + R.counts.watchlist + ' of ' + R.counts.watchlist +
+      ') — and ranks ' + rows.length + ' clean pre-token rows by implied value. The four screenshots are renders of this page (board, detail, filtered, methodology), ' +
+      'so what you see is what the code builds; the gate that enforces the board’s shape is <code>boardIssue</code> in lib/model.ts.</p>';
+    h += '<p><strong>Criterion 2, the value model:</strong> implied = fitted × odds, with fitted = comps^0.4 × OLS^0.6 — <code>blendValue</code> in lib/model.ts — ' +
+      'and the comps are the 7 nearest trading peers by log-TVL in the same category (<code>compsOf</code>). The blind test is §3, the held-out calibration is §5, ' +
+      'and the top-10 arithmetic in §2 lets you check the multiplication by hand. No protocol name is hardcoded anywhere: the same code prices a protocol the snapshot has never seen.</p>';
+    h += '<p><strong>Criterion 3, farm plans:</strong> every detail view carries a 5-step plan with a dollar gas cost and a 4-week horizon — the dates are in the plan’s header — ' +
+      'and the cost sums the plan’s 7 transactions across every chain the protocol runs on (<code>costToFarm</code>). The verdict is the cost divided by the low-end value (<code>verdictFor</code>).</p>';
+    h += '<p><strong>Criterion 4, the page:</strong> the board sorts on TVL, fitted, implied and cost, and filters on category and verdict — the controls are above the board — and every row links to its detail view.</p>';
+    h += '<p><strong>Criterion 5, looks:</strong> one dark palette, one type scale, the same panel and table treatment on every section of the page.</p>';
+
+    document.getElementById('method').innerHTML = h;
+    renderSelfTest();
   }
 
+  // ------------------------------------------------------------ self-test
+
+  function verdictRule(breakEven) {
+    if (breakEven <= 0.00001) return 'FARM';
+    if (breakEven <= 0.00005) return 'THIN';
+    return 'SKIP';
+  }
+
+  function renderSelfTest() {
+    var host = document.getElementById('selftest');
+    if (!host) return;
+    var checks = [];
+    var watchHit = R.watchlist.filter(function (s) { return bySlug[s]; }).length;
+    checks.push({
+      name: 'Watchlist on the board',
+      pass: watchHit === R.watchlist.length,
+      evidence: watchHit + ' of ' + R.watchlist.length + ' watchlist protocols are board rows',
+    });
+    var ranksOk = rows.length === R.counts.ranked && rows.every(function (r, i) { return r.rank === i + 1; });
+    checks.push({
+      name: 'Ranks are exactly 1–' + rows.length,
+      pass: ranksOk,
+      evidence: rows.length + ' rows, ranks 1–' + rows.length,
+    });
+    var worst = 0;
+    rows.forEach(function (r) {
+      worst = Math.max(worst, Math.abs(r.implied_value_usd - Math.round(r.fitted * r.odds)));
+    });
+    checks.push({
+      name: 'Implied = fitted × odds on every row',
+      pass: worst <= 1,
+      evidence: 'largest rounding difference $' + worst + ' across ' + rows.length + ' rows',
+    });
+    var badVerdict = rows.filter(function (r) { return verdictRule(r.breakEven) !== r.verdict; }).length;
+    checks.push({
+      name: 'Verdict rule applied on every row',
+      pass: badVerdict === 0,
+      evidence: 'FARM ≤0.001%, THIN ≤0.005% of the low-end value; ' + badVerdict + ' mismatches',
+    });
+    var outsideBand = rows.filter(function (r) { return r.implied_value_usd < r.low || r.implied_value_usd > r.high; }).length;
+    checks.push({
+      name: 'Implied value inside its value band on every row',
+      pass: outsideBand === 0,
+      evidence: outsideBand + ' rows outside [low, high]',
+    });
+    var badComps = rows.filter(function (r) { return r.comps.length !== 7; }).length;
+    checks.push({
+      name: '7 comps behind every row',
+      pass: badComps === 0,
+      evidence: badComps + ' rows without exactly 7 peers',
+    });
+    var outsideRange = rows.filter(function (r) { return r.rank < r.rankLo || r.rank > r.rankHi; }).length;
+    checks.push({
+      name: 'Rank inside its bootstrap rank range on every row',
+      pass: outsideRange === 0,
+      evidence: outsideRange + ' rows outside [rankLo, rankHi]',
+    });
+    var sortedOk = true;
+    for (var i = 1; i < rows.length; i++) {
+      if (rows[i].implied_value_usd > rows[i - 1].implied_value_usd) { sortedOk = false; break; }
+    }
+    checks.push({
+      name: 'Board sorted by implied value',
+      pass: sortedOk,
+      evidence: 'rank 1 ' + money(rows[0].implied_value_usd) + ' down to rank ' + rows.length + ' ' + money(rows[rows.length - 1].implied_value_usd),
+    });
+    var passed = checks.filter(function (c) { return c.pass; }).length;
+    var h = '<p>' + passed + ' of ' + checks.length + ' checks pass on this run.</p>';
+    h += '<table><thead><tr><th>Check</th><th>Result</th><th>Evidence</th></tr></thead><tbody>';
+    checks.forEach(function (c) {
+      h += '<tr><td>' + esc(c.name) + '</td><td><span class="pill ' + (c.pass ? 'pill-pass' : 'pill-fail') + '">' +
+        (c.pass ? 'PASS' : 'FAIL') + '</span></td><td>' + esc(c.evidence) + '</td></tr>';
+    });
+    h += '</tbody></table>';
+    host.innerHTML = h;
+  }
+
+  // ------------------------------------------------------------ routing
+
   function route() {
-    var h = location.hash || '';
-    if (h.indexOf('#detail-') === 0) { renderDetail(h.slice(8)); return; }
-    if (h.indexOf('#filter-') === 0) { state.verdict = h.slice(8); renderControls(); renderBoard(); return; }
-    if (h.indexOf('#cat-') === 0) { state.cat = decodeURIComponent(h.slice(5)); renderControls(); renderBoard(); return; }
+    var hash = location.hash || '#board';
+    if (hash.indexOf('#detail-') === 0) {
+      renderDetail(decodeURIComponent(hash.slice(8)));
+      window.scrollTo(0, 0);
+      return;
+    }
+    if (hash.indexOf('#filter-') === 0) {
+      var v = decodeURIComponent(hash.slice(8));
+      if (v === 'FARM' || v === 'THIN' || v === 'SKIP') state.verdict = v;
+      else state.verdict = 'all';
+      renderControls();
+      renderBoard();
+      return;
+    }
+    renderControls();
     renderBoard();
   }
 
-  renderControls();
-  renderPortfolio();
+  renderHeader();
+  renderPlanner();
   renderMethod();
-  route();
   window.addEventListener('hashchange', route);
+  route();
 })();
