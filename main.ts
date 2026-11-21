@@ -1,4 +1,4 @@
-// Token Radar v7 — entrypoint.
+// Token Radar v8 — entrypoint.
 //
 // Reads the sealed snapshot (default /input/snapshot.json, or --input),
 // builds the ranked board with lib/model.ts, writes board.json and the

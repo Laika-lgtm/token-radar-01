@@ -9,7 +9,7 @@ body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 -apple-syste
 .skip{position:absolute;left:-9999px;color:var(--blue)}
 .top{background:linear-gradient(180deg,#101827,#0c1017);border-bottom:1px solid var(--line);padding:26px 0 18px}
 h1{margin:0;font-size:30px;letter-spacing:-.5px}
-.v7{color:var(--green);font-size:16px;vertical-align:super}
+.v8{color:var(--green);font-size:16px;vertical-align:super}
 .sub{color:var(--muted);margin:6px 0 14px;max-width:760px}
 .kpis{display:flex;flex-wrap:wrap;gap:10px}
 .kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;min-width:130px}
@@ -40,6 +40,9 @@ td.name small{display:block;color:var(--faint);font-size:11.5px}
 .panel p,.panel li{color:#c9d2de;font-size:14px}
 .comps td:first-child,.comps th:first-child{text-align:left}
 .panel table{background:var(--panel2)}
+.selftest td:first-child,.selftest th:first-child{text-align:left}
+.selftest td:nth-child(2),.selftest th:nth-child(2){text-align:center}
+code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;background:var(--panel2);padding:1px 5px;border-radius:5px}
 .detail h2{font-size:24px;margin:0 0 4px}
 .detail .meta{color:var(--muted);font-size:13.5px;margin:0 0 14px}
 .math{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0}

@@ -1,4 +1,4 @@
-// Token Radar v7 — comps-priced launch radar.
+// Token Radar v8 — comps-priced launch radar.
 //
 // Value model (all numbers computed from the sealed snapshot at run time):
 //   * Anchors: the 128 protocols that record a token WITH a positive market
@@ -21,6 +21,19 @@
 //     a fixed seed; per row the 10th/90th percentile of fitted value and
 //     the min/max rank across refits. No invented constants: the old
 //     low = half the implied is gone; the band comes from the bootstrap.
+//
+// v8 changes (presentation only — the model above is untouched):
+//   * Cost to farm now sums the plan's 7 transactions across EVERY chain
+//     the protocol runs on (v7 charged 7 x the main chain's fee only, so
+//     the column took just eight values and every THIN row read $63.00).
+//     With the same verdict thresholds the counts move to FARM 91 /
+//     THIN 73 / SKIP 34: the thresholds are judgement, the costs are
+//     measurement, so the thresholds did not move.
+//   * The farm steps now farm the protocol on each of its chains, and the
+//     per-step gas figures add up to the stated total. Single-chain rows
+//     keep v7's wording byte for byte.
+//   * The dashboard's watchlist slugs ride along in the radar object so
+//     the page's live self-test can check the 40/40 coverage itself.
 //
 // Everything in this file is deterministic: fixed iteration counts, a
 // fixed bootstrap seed, and sorts broken by slug. Two runs write the
@@ -89,6 +102,7 @@ export interface Radar {
   asOf: string;
   source: string;
   counts: { scanned: number; ranked: number; anchors: number; degenerate: number; watchlist: number };
+  watchlist: string[];
   ols: { a: number; b: number };
   logit: number[];
   medianAnchorAge: number;
@@ -380,7 +394,11 @@ export function calibrationTable(anchors: Proto[], medianAge: number, asOf: stri
  * Assumed typical fee for one transaction on a chain, in USD. These are
  * JUDGEMENT assumptions, not snapshot data — the snapshot carries no gas
  * prices — and Methodology says so. A farm plan runs 3 setup transactions
- * plus 4 weekly activity transactions in its first month: 7 in all.
+ * plus 4 weekly activity transactions in its first month: 7 in all, on
+ * EACH chain the protocol runs on — a plan farms the protocol on every
+ * one of its chains, so the cost is 7 x the sum of the chains' fees.
+ * v7 charged 7 x the main chain's fee only, which left the cost column
+ * with eight values and every THIN row reading $63.00.
  */
 const GAS_USD: Record<string, number> = {
   Ethereum: 9.0,
@@ -405,8 +423,15 @@ export function gasUsd(chain: string): number {
   return GAS_USD[chain] ?? 1.0;
 }
 
+/** One transaction's gas on every chain the protocol runs on, summed. */
+export function gasSum(p: Proto): number {
+  const chains = p.chains.length > 0 ? p.chains : ['Ethereum'];
+  return chains.reduce((s, c) => s + gasUsd(c), 0);
+}
+
+/** Cost to farm: 7 transactions (3 setup + 4 weekly) on every chain. */
 export function costToFarm(p: Proto): number {
-  return Math.round(7 * gasUsd(mainChain(p)) * 100) / 100;
+  return Math.round(7 * gasSum(p) * 100) / 100;
 }
 
 /** Suggested deposit, sized by implied value (a stated rule, not a fact). */
@@ -423,7 +448,9 @@ export function depositFor(implied: number): number {
  * levels 192 of these 198 rows were FARM — gas is small next to these
  * valuations, so the old thresholds blessed nearly the whole board and
  * separated nothing. FARM at 0.001% means the farmer needs one
- * hundred-thousandth of the low-end value to cover gas.
+ * hundred-thousandth of the low-end value to cover gas. The thresholds
+ * did not move in v8; the costs did (multi-chain sums), and the counts
+ * moved with them: FARM 91 / THIN 73 / SKIP 34.
  */
 export function verdictFor(breakEven: number): 'FARM' | 'THIN' | 'SKIP' {
   if (breakEven <= 0.00001) return 'FARM';
@@ -452,18 +479,34 @@ function familyVerb(category: string | null): { act: string; asset: string } {
   return (category !== null && FAMILY_VERB[category]) || { act: 'use the protocol', asset: 'a position' };
 }
 
-/** Five concrete farm steps, each 20-600 chars, built from snapshot facts. */
+/**
+ * The chains a plan touches, as the steps name them: one chain by name,
+ * up to three listed, more than three as the first three plus a count.
+ */
+function chainScope(p: Proto): string {
+  const n = p.chains.length;
+  if (n <= 1) return mainChain(p);
+  const list = n <= 3 ? p.chains.join(', ') : `${p.chains.slice(0, 3).join(', ')} and ${n - 3} more`;
+  return `each of its ${n} chains (${list})`;
+}
+
+/** Five concrete farm steps, each 20-600 chars, built from snapshot facts.
+ * The per-step gas figures add up to the plan's total cost: one
+ * transaction's gas on every chain for the bridge, the opening and the
+ * withdrawal, and four weekly actions' gas on every chain in between.
+ * Single-chain rows keep v7's wording byte for byte. */
 export function farmSteps(p: Proto, deposit: number, cost: number): string[] {
-  const chain = mainChain(p);
-  const gas = gasUsd(chain);
+  const gas = gasSum(p);
   const v = familyVerb(p.category);
   const cat = p.category ?? 'DeFi';
+  const scope = chainScope(p);
+  const multi = p.chains.length > 1;
   return [
-    `Bridge $${deposit} of USDC to ${chain} in a fresh wallet used only for ${p.name} (about $${gas.toFixed(2)} in gas, 10-20 minutes).`,
-    `Open ${p.name} (${cat}) on ${chain} and ${v.act} with $${deposit} to open ${v.asset} (about $${gas.toFixed(2)} in gas, 20-30 minutes).`,
-    `Keep the position active for at least 4 weeks: check it weekly, top it up or rebalance if it drifts, and record each interaction (4 weekly actions, about $${(4 * gas).toFixed(2)} in gas).`,
+    `Bridge $${deposit} of USDC to ${scope} in a fresh wallet used only for ${p.name} (about $${gas.toFixed(2)} in gas, 10-20 minutes${multi ? ' per chain' : ''}).`,
+    `Open ${p.name} (${cat}) on ${scope} and ${v.act} with $${deposit}${multi ? ' split across the chains' : ''} to open ${v.asset}${multi ? ' on each chain' : ''} (about $${gas.toFixed(2)} in gas, 20-30 minutes${multi ? ' per chain' : ''}).`,
+    `Keep the position${multi ? 's' : ''} active for at least 4 weeks: check ${multi ? 'them' : 'it'} weekly, top ${multi ? 'them' : 'it'} up or rebalance if ${multi ? 'they drift' : 'it drifts'}, and record each interaction (4 weekly actions${multi ? ' on each chain' : ''}, about $${(4 * gas).toFixed(2)} in gas).`,
     `Use the protocol the way a real user would at least twice a week — a swap, a deposit or a vote where the app offers one — so the activity reads as usage, not a single deposit (about 15 minutes each time).`,
-    `After 4 weeks, review the position against this radar's value band: if the protocol still ranks in the top half, keep farming; otherwise withdraw and move the $${deposit} to the next FARM row (about $${gas.toFixed(2)} in gas). Total plan cost about $${cost.toFixed(2)} in gas.`,
+    `After 4 weeks, review the position${multi ? 's' : ''} against this radar's value band: if the protocol still ranks in the top half, keep farming; otherwise withdraw and move the $${deposit} to the next FARM row (about $${gas.toFixed(2)} in gas). Total plan cost about $${cost.toFixed(2)} in gas.`,
   ];
 }
 
@@ -574,6 +617,7 @@ export function buildRadar(snapshot: Snapshot): { board: Row[]; radar: Radar } {
     asOf,
     source: snapshot.source,
     counts: { scanned: snapshot.protocols.length, ranked: rows.length, anchors: anchors.length, degenerate, watchlist: snapshot.watchlist.length },
+    watchlist: snapshot.watchlist,
     ols,
     logit,
     medianAnchorAge: medianAge,

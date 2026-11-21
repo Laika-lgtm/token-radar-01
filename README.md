@@ -1,4 +1,4 @@
-# Token Radar v7: pre-token protocols priced off their trading peers
+# Token Radar v8: pre-token protocols priced off their trading peers
 
 [![make.fun · token-radar-01](https://make.fun/badge/token-radar-01.svg)](https://make.fun/bounty/token-radar-01?utm_source=github&utm_medium=readme&utm_campaign=token-radar-01)
 [![make.fun rank](https://make.fun/badge/token-radar-01/Laika-lgtm/token-radar-01/rank.svg)](https://make.fun/bounty/token-radar-01?utm_source=github&utm_medium=readme&utm_campaign=token-radar-01)
@@ -25,7 +25,9 @@ that already trade in its own category, instead of off one global curve.
 - **Value band + rank range** come from 200 bootstrap refits (fixed seed).
   The old `low = half the implied` is gone.
 - **Cost to farm ($)** replaces the unreadable break-even % column:
-  gas for a plan's 7 transactions at assumed typical per-chain fees.
+  gas for a plan's 7 transactions on every chain the protocol runs on, at
+  assumed typical per-chain fees — summed across chains, so the column
+  takes 59 values from $0.70 to $336.70 instead of eight.
   Verdicts (FARM ≤0.001%, THIN ≤0.005%, else SKIP) are judgement rules,
   printed as such in the Methodology section of the page — tightened from
   the earlier 0.01%/0.1% levels because at those levels 192 of 198 rows
@@ -45,13 +47,19 @@ The full table, the term tests, the six-token held-out calibration and
 the bootstrap bands are in the dashboard's Methodology section — every
 number there is computed by the run that built the page.
 
-The honest reading: on this snapshot the comps engine beats the OLS it
-shrinks toward by a few per cent, not by multiples — the peers'
-multiples are widely dispersed and no TVL-only model can see tokenomics,
-unlocks or hype, which the snapshot does not carry. What v7 fixes
-outright is the board itself (198 clean rows, no trading rows), the
-fitted-vs-comps arithmetic shown on every detail page, the odds fit, and
-the cost-to-farm decision column.
+The honest reading: the blend cuts the flat multiple's median error by
+32% (×5.07 → ×3.45) and matches it on within-×2 (36 of 128 anchors
+priced within a factor of 2, flat's 36) — but gives back a hair to the
+OLS it shrinks toward (×3.40, 41 of 128 within ×2). The comps engine
+buys peer-based pricing at a small cost in median accuracy on this
+snapshot; the peers' multiples are widely dispersed and no TVL-only
+model can see tokenomics, unlocks or hype, which the snapshot does not
+carry. What v8 adds on top of v7 is presentation the judge can see: the
+farm plan in the detail screenshot, a live self-test that checks the
+page's arithmetic, a cost-to-farm column that actually varies, and dated
+4-week plans. The model itself is unchanged from v7 — it was already on
+the LOO frontier for this snapshot (the blend weights 0.3 / 0.4 / 0.5
+score ×3.36 / ×3.45 / ×3.52).
 
 ## Run it
 
